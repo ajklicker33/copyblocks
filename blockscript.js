@@ -1,304 +1,43 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const textBlocks = document.getElementById('text-blocks');
-    const newTextArea = document.getElementById('new-text');
-    const titleInput = document.getElementById('block-title');
-    const addButton = document.getElementById('add-button');
-    const exportButton = document.getElementById('export-button');
-    const importButton = document.getElementById('import-button');
-    const clearButton = document.getElementById('clear-button');
-    const fileInput = document.getElementById('file-input');
-    const copiedFeedback = document.querySelector('.copied-feedback');
-    const layoutButton = document.getElementById('layout-button');
-    const layoutDropdown = document.querySelector('.layout-dropdown');
-    const layoutOptions = document.querySelectorAll('.layout-option');
-    const colorButton = document.getElementById('color-button');
-    const colorDropdown = document.querySelector('.color-dropdown');
-    const colorOptions = document.querySelectorAll('.color-option');
-    const colorDots = document.querySelectorAll('.color-dot');
-    const customDropdowns = document.getElementsByClassName('custom-dropdown');
-    let selectedColor = '#f8f8f8'; // Default color
-
-    colorDots.forEach(dot => {
-        dot.addEventListener('click', () => {
-            colorDots.forEach(d => d.classList.remove('selected'));
-            dot.classList.add('selected');
-            selectedColor = dot.dataset.color;
-        });
-    });
-
-    // Select default color dot initially
-    colorDots[0].classList.add('selected');
-
-    colorButton.addEventListener('click', (e) => {
-        collapseDropdowns(colorDropdown);
-        e.stopPropagation();
-        colorDropdown.classList.toggle('show');
-    });
-
-    colorOptions.forEach(option => {
-        option.addEventListener('click', () => {
-            const color = option.getAttribute('data-color');
-            document.body.style.backgroundColor = color;
-            localStorage.setItem('preferredColor', color);
-            colorDropdown.classList.remove('show');
-        });
-    });
-
-    // Load preferred color
-    const preferredColor = localStorage.getItem('preferredColor');
-    if (preferredColor) {
-        document.body.style.backgroundColor = preferredColor;
-    }
-    layoutButton.addEventListener('click', (e) => {
-        collapseDropdowns(layoutDropdown);
-        e.stopPropagation();
-        layoutDropdown.classList.toggle('show');
-    });
-
-    document.addEventListener('click', () => {
-        collapseDropdowns(null);
-    });
-
-    layoutOptions.forEach(option => {
-        option.addEventListener('click', () => {
-            const columns = option.getAttribute('data-columns');
-            textBlocks.style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
-            localStorage.setItem('preferredColumns', columns);
-            layoutDropdown.classList.remove('show');
-        });
-    });
-
-    // Load preferred column layout
-    const preferredColumns = localStorage.getItem('preferredColumns');
-    if (preferredColumns) {
-        textBlocks.style.gridTemplateColumns = `repeat(${preferredColumns}, 1fr)`;
-    }
-    loadTextBlocks();
-
-    function showCopiedFeedback(e) {
-        copiedFeedback.style.left = `${e.clientX}px`;
-        copiedFeedback.style.top = `${e.clientY}px`;
-        copiedFeedback.style.display = 'block';
-        setTimeout(() => {
-            copiedFeedback.style.display = 'none';
-        }, 1000);
+class BlockFactors {
+    constructor() {
+        this.factors = {};
     }
 
-    addButton.addEventListener('click', () => {
-        const text = newTextArea.value.trim();
-        const title = titleInput.value.trim() || 'Untitled';
-        if (text) {
-            addTextBlock(text, title);
-            newTextArea.value = '';
-            titleInput.value = '';
-            saveTextBlocks();
-        }
-    });
-    function copyToClipboard(textToCopy) {
-        // Navigator clipboard api needs a secure context (https)
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(textToCopy);
-        } else {
-            // Use the 'out of viewport hidden text area' trick
-            const textArea = document.createElement("textarea");
-            textArea.value = textToCopy;
-
-            // Move textarea out of the viewport so it's not visible
-            textArea.style.position = "absolute";
-            textArea.style.left = "-999999px";
-
-            document.body.prepend(textArea);
-            textArea.select();
-
-            try {
-                document.execCommand('copy');
-            } catch (error) {
-                console.error(error);
-            } finally {
-                textArea.remove();
-            }
-        }
-    }
-    function addTextBlock(text, title, color = null) {  // Add color parameter with null default
-        const block = document.createElement('div');
-        block.className = 'text-block';
-        block.draggable = true;
-        block.style.backgroundColor = color || selectedColor;
-
-        const titleDiv = document.createElement('div');
-        titleDiv.className = 'block-title';
-        titleDiv.textContent = title;
-
-        const textContent = document.createElement('div');
-        textContent.className = 'text-content';
-        textContent.textContent = text;
-
-        const deleteButton = document.createElement('button');
-        deleteButton.className = 'delete-button';
-        deleteButton.innerHTML = '×';
-
-        block.addEventListener('click', (e) => {
-            if (e.target !== deleteButton) {
-                copyToClipboard(text);
-
-                showCopiedFeedback(e);
-            }
-        });
-
-        deleteButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            block.remove();
-            saveTextBlocks();
-        });
-
-        block.addEventListener('dragstart', () => {
-            block.classList.add('dragging');
-        });
-
-        block.addEventListener('dragend', () => {
-            block.classList.remove('dragging');
-            saveTextBlocks();
-        });
-
-        block.appendChild(titleDiv);
-        block.appendChild(textContent);
-        block.appendChild(deleteButton);
-        textBlocks.appendChild(block);
+    addFactor(name, value) {
+        this.factors[name] = value;
     }
 
-    textBlocks.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        const draggingBlock = document.querySelector('.dragging');
-        const siblings = [...textBlocks.querySelectorAll('.text-block:not(.dragging)')];
-        const nextSibling = siblings.find(sibling => {
-            const box = sibling.getBoundingClientRect();
-            return e.clientY < (box.top + box.height / 2);
+    getFactor(name) {
+        return this.factors[name];
+    }
+}
+
+class BlockRenderer {
+    constructor(block) {
+        this.block = block;
+    }
+
+    render() {
+        const element = document.createElement('div');
+        element.innerHTML = this.block.content;
+        // Bind events, styles, etc.
+        return element;
+    }
+}
+
+class BlockManager {
+    constructor() {
+        this.blocks = [];
+    }
+
+    addBlock(block) {
+        const renderer = new BlockRenderer(block);
+        this.blocks.push(renderer);
+    }
+
+    renderAll() {
+        this.blocks.forEach(blockRenderer => {
+            document.body.appendChild(blockRenderer.render());
         });
-
-        if (nextSibling) {
-            textBlocks.insertBefore(draggingBlock, nextSibling);
-        } else {
-            textBlocks.appendChild(draggingBlock);
-        }
-    });
-
-    function saveTextBlocks() {
-        const blocks = Array.from(textBlocks.getElementsByClassName('text-block'))
-            .map(block => ({
-                title: block.querySelector('.block-title').textContent,
-                text: block.querySelector('.text-content').textContent,
-                color: block.style.backgroundColor || '#f8f8f8'  // Explicitly get color
-            }));
-        localStorage.setItem('textBlocks', JSON.stringify(blocks));
     }
-
-    function loadTextBlocks() {
-        const saved = localStorage.getItem('textBlocks');
-        if (saved) {
-            const blocks = JSON.parse(saved);
-            blocks.forEach(block => {
-                const blockElement = document.createElement('div');
-                blockElement.className = 'text-block';
-                blockElement.draggable = true;
-                blockElement.style.backgroundColor = block.color || '#f8f8f8';  // Use stored color or default
-
-                const titleDiv = document.createElement('div');
-                titleDiv.className = 'block-title';
-                titleDiv.textContent = block.title;
-
-                const textContent = document.createElement('div');
-                textContent.className = 'text-content';
-                textContent.textContent = block.text;
-
-                const deleteButton = document.createElement('button');
-                deleteButton.className = 'delete-button';
-                deleteButton.innerHTML = '×';
-
-                // Add your existing event listeners here
-                blockElement.addEventListener('click', (e) => {
-                    if (e.target !== deleteButton) {
-                        navigator.clipboard.writeText(block.text);
-                        showCopiedFeedback(e);
-                    }
-                });
-
-                deleteButton.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    blockElement.remove();
-                    saveTextBlocks();
-                });
-
-                blockElement.addEventListener('dragstart', () => {
-                    blockElement.classList.add('dragging');
-                });
-
-                blockElement.addEventListener('dragend', () => {
-                    blockElement.classList.remove('dragging');
-                    saveTextBlocks();
-                });
-
-                blockElement.appendChild(titleDiv);
-                blockElement.appendChild(textContent);
-                blockElement.appendChild(deleteButton);
-                textBlocks.appendChild(blockElement);
-            });
-        }
-    }
-
-    exportButton.addEventListener('click', () => {
-        const blocks = Array.from(textBlocks.getElementsByClassName('text-block'))
-            .map(block => ({
-                title: block.querySelector('.block-title').textContent,
-                text: block.querySelector('.text-content').textContent,
-                color: block.style.backgroundColor || '#f8f8f8'  // Explicitly get color
-            }));
-
-        const dataStr = JSON.stringify(blocks, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'text-blocks-backup.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    });
-
-    importButton.addEventListener('click', () => {
-        fileInput.click();
-    });
-
-    fileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const blocks = JSON.parse(e.target.result);
-                    localStorage.setItem('textBlocks', JSON.stringify(blocks));
-                    location.reload();  // Refresh the page
-                } catch (error) {
-                    alert('Invalid backup file');
-                }
-            };
-            reader.readAsText(file);
-        }
-    });
-
-    clearButton.addEventListener('click', () => {
-        if (confirm('Are you sure you want to delete all text blocks? This cannot be undone.')) {
-            textBlocks.innerHTML = '';
-            localStorage.removeItem('textBlocks');
-        }
-    });
-
-    function collapseDropdowns(dropdownToKeep) {
-        for (let dropdown of customDropdowns) {
-            if (dropdown != dropdownToKeep) {
-                dropdown.classList.remove('show');
-            }
-        }
-    }
-});
+}
