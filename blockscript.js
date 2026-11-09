@@ -43,6 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function resetEditor() {
         editing = null; title.value = ''; text.value = ''; add.textContent = 'Add Text Block';
         $('#cancel-edit').hidden = true;
+        updateDetectedLinks();
     }
     async function copy(value) {
         try {
@@ -62,14 +63,69 @@ document.addEventListener('DOMContentLoaded', () => {
         const b = document.createElement('button'); b.type = 'button'; b.textContent = label;
         b.addEventListener('click', event => { event.stopPropagation(); action(); }); return b;
     }
+    function linksIn(value) {
+        const links = new Set();
+        // Explicit HTTP(S), at a word boundary; never interpret the body as HTML.
+        const candidates = value.matchAll(/(?:^|[\s([{<"'“‘])(https?:\/\/[^\s<>"'`“”‘’]+)/giu);
+        for (const match of candidates) {
+            let candidate = match[1];
+            // Trim sentence punctuation and unmatched closing delimiters only.
+            let previous;
+            do {
+                previous = candidate;
+                candidate = candidate.replace(/[.,!?:;]+$/u, '');
+                for (const [open, close] of [['(', ')'], ['[', ']'], ['{', '}']]) {
+                    while (candidate.endsWith(close) && candidate.split(close).length > candidate.split(open).length) {
+                        candidate = candidate.slice(0, -1);
+                    }
+                }
+            } while (candidate !== previous);
+            try {
+                const url = new URL(candidate);
+                if (url.protocol === 'http:' || url.protocol === 'https:') links.add(url.href);
+            } catch { /* Ignore malformed URLs; the original text is still copyable. */ }
+        }
+        return [...links];
+    }
+    function linkList(urls) {
+        const items = document.createElement('ul'); items.className = 'link-list';
+        for (const url of urls) {
+            const item = document.createElement('li');
+            const link = document.createElement('a');
+            link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+            link.textContent = url;
+            link.setAttribute('aria-label', `${url} (opens in new tab)`);
+            link.draggable = false;
+            link.addEventListener('click', event => event.stopPropagation());
+            link.addEventListener('dragstart', event => { event.preventDefault(); event.stopPropagation(); });
+            item.append(link); items.append(item);
+        }
+        return items;
+    }
+    function updateDetectedLinks() {
+        const urls = linksIn(text.value);
+        const preview = $('#detected-links-list');
+        preview.replaceChildren(...linkList(urls).children);
+        preview.hidden = !urls.length;
+        $('#no-detected-links').hidden = !!urls.length;
+    }
     function render() {
-        const currentTag = filter.value;
-        filter.replaceChildren(new Option('All hashtags', ''));
-        [...new Set(blocks.flatMap(tags))].sort().forEach(tag => filter.add(new Option(tag, tag)));
-        filter.value = [...filter.options].some(o => o.value === currentTag) ? currentTag : '';
+        const currentFilter = filter.value;
+        const blockLinks = new Map(blocks.map(block => [block, linksIn(block.text)]));
+        filter.replaceChildren(new Option('All blocks', ''));
+        for (const [label, values] of [
+            ['Hashtags', [...new Set(blocks.flatMap(tags))].sort()],
+            ['Detected links', [...new Set([...blockLinks.values()].flat())].sort()]
+        ]) {
+            if (!values.length) continue;
+            const group = document.createElement('optgroup'); group.label = label;
+            values.forEach(value => group.append(new Option(value, value)));
+            filter.append(group);
+        }
+        filter.value = [...filter.options].some(o => o.value === currentFilter) ? currentFilter : '';
         list.replaceChildren();
         blocks.forEach((block, index) => {
-            if (filter.value && !tags(block).includes(filter.value)) return;
+            if (filter.value && !tags(block).includes(filter.value) && !blockLinks.get(block).includes(filter.value)) return;
             const card = document.createElement('article'); card.className = 'text-block';
             card.style.backgroundColor = block.color; card.draggable = !filter.value;
             card.dataset.index = index;
@@ -78,6 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const actions = document.createElement('div'); actions.className = 'block-actions';
             actions.append(button('Copy', () => copy(block.text)), button('Edit', () => {
                 editing = block; title.value = block.title; text.value = block.text; chooseColor(block.color);
+                updateDetectedLinks();
                 add.textContent = 'Save Changes'; $('#cancel-edit').hidden = false; title.focus();
             }), button('Delete', () => {
                 if (!confirm(`Delete "${block.title}"?`)) return;
@@ -92,7 +149,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 move.disabled = !!filter.value || index + offset < 0 || index + offset >= blocks.length;
                 actions.append(move);
             }
-            card.append(heading, content, actions);
+            card.append(heading, content);
+            const urls = blockLinks.get(block);
+            if (urls.length) {
+                const links = document.createElement('div'); links.className = 'block-links';
+                const label = document.createElement('h3'); label.textContent = 'Detected links';
+                links.append(label, linkList(urls));
+                card.append(links);
+            }
+            card.append(actions);
             card.addEventListener('click', () => copy(block.text));
             card.addEventListener('dragstart', event => {
                 dragging = block; card.classList.add('dragging'); event.dataTransfer.setData('text/plain', String(index));
@@ -117,6 +182,7 @@ document.addEventListener('DOMContentLoaded', () => {
         resetEditor(); save(); render();
     });
     $('#cancel-edit').addEventListener('click', resetEditor);
+    text.addEventListener('input', updateDetectedLinks);
     filter.addEventListener('change', render);
     document.querySelectorAll('.color-dot').forEach(dot => {
         dot.setAttribute('role', 'button'); dot.tabIndex = 0; dot.setAttribute('aria-label', dot.title);
