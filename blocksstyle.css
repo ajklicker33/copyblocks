@@ -352,3 +352,22 @@ color: black;
     outline: 2px solid #666;
     outline-offset: 2px;
 }
+
+/* Keep long strings inside the selected grid, including on narrow screens. */
+* { box-sizing: border-box; }
+.container { max-width: 1140px; }
+#text-blocks { grid-template-columns: repeat(var(--columns, 3), minmax(0, 1fr)); }
+.text-block { min-width: 0; user-select: text; }
+.text-content { white-space: pre-wrap; overflow-wrap: anywhere; }
+.block-title { font-size: 1.1rem; overflow-wrap: anywhere; }
+.block-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.block-actions button, #cancel-edit, select { padding: 6px 10px; }
+.blocks-section { margin-top: 20px; }
+.header-buttons { flex-wrap: wrap; gap: 8px; }
+#status { min-height: 1.5em; }
+#block-count { margin-left: 12px; }
+button, select, [role="button"] { cursor: pointer; }
+button:disabled { cursor: default; opacity: .5; }
+:focus-visible { outline: 3px solid #007399; outline-offset: 3px; }
+[hidden] { display: none !important; }
+@media (max-width: 640px) { #text-blocks { grid-template-columns: minmax(0, 1fr); } body { padding: 10px; } }

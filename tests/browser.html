@@ -1,0 +1,44 @@
+﻿<!doctype html><meta charset="utf-8"><title>CopyBlocks regression tests</title>
+<pre id="results">RUNNING</pre><iframe src="../index.html"></iframe>
+<script>
+const frame = document.querySelector('iframe');
+frame.onload = async () => {
+ const w = frame.contentWindow, d = w.document, output = document.querySelector('#results');
+ const results = [];
+ const check = (condition, label) => { if (!condition) throw new Error(label); results.push('PASS ' + label); };
+ const click = selector => d.querySelector(selector).click();
+ const action = label => [...d.querySelectorAll('.block-actions button')].find(b => b.textContent === label).click();
+ const add = (title, text) => { d.querySelector('#block-title').value = title; d.querySelector('#new-text').value = text; click('#add-button'); };
+ w.confirm = () => true;
+ try {
+  click('#clear-button');
+  click('#layout-button'); check(d.querySelector('.layout-dropdown').classList.contains('show'), 'layout opens');
+  click('[data-columns="2"]'); check(w.localStorage.getItem('preferredColumns') === '2', 'layout persists');
+  click('#color-button'); click('.color-option[data-color="#FFB0FF"]'); check(w.localStorage.getItem('preferredColor') === '#FFB0FF', 'background persists');
+  add('First #Work', 'Hello 🍒\n<svg onload=alert(1)>');
+  add('Second', 'x'.repeat(300) + ' #other');
+  check(d.querySelectorAll('.text-block').length === 2, 'add buttons create blocks');
+  check(!d.querySelector('.text-content svg'), 'block text is not executable HTML');
+  check(JSON.parse(w.localStorage.getItem('textBlocks'))[0].text.includes('🍒'), 'Unicode persists');
+  action('Edit'); d.querySelector('#new-text').value = 'Changed #new'; click('#add-button');
+  check(d.querySelector('.text-content').textContent === 'Changed #new', 'editing updates existing block');
+  check(d.querySelectorAll('.text-block').length === 2, 'editing does not duplicate');
+  const filter = d.querySelector('#tag-filter'); filter.value = '#other'; filter.dispatchEvent(new w.Event('change'));
+  check(d.querySelectorAll('.text-block').length === 1, 'dynamic hashtag filtering');
+  check(d.querySelector('.block-title').textContent === 'Second', 'filter selects correct block');
+  filter.value = ''; filter.dispatchEvent(new w.Event('change'));
+  action('Move down'); check(d.querySelector('.block-title').textContent === 'Second', 'reordering persists');
+  action('Edit'); click('#cancel-edit'); check(d.querySelector('#add-button').textContent === 'Add Text Block', 'cancel editing');
+  const input = d.querySelector('#file-input');
+  async function importJSON(value) { const dt = new w.DataTransfer(); dt.items.add(new w.File([value], 'backup.json', {type:'application/json'})); input.files = dt.files; input.dispatchEvent(new w.Event('change')); for (let i = 0; i < 100 && input.value; i++) await new Promise(r => setTimeout(r, 20)); }
+  await importJSON('{"wrong":true}'); check(d.querySelectorAll('.text-block').length === 2, 'invalid import preserves blocks');
+  await importJSON('[{"title":"Restored","text":"Legacy backup"}]'); check(d.querySelector('.text-content').textContent === 'Legacy backup', 'legacy backup imports');
+  check(d.querySelectorAll('.text-block').length === 1, 'import replaces only after validation');
+  const card = d.querySelector('.text-block'); check(card.scrollWidth <= card.clientWidth, 'card does not overflow');
+  action('Delete'); check(d.querySelectorAll('.text-block').length === 0, 'delete button');
+  add('Clear', 'Clear me'); click('#clear-button'); check(JSON.parse(w.localStorage.getItem('textBlocks')).length === 0, 'clear saves empty collection');
+  output.textContent = results.join('\n') + '\nALL PASSED';
+ } catch(e) { output.textContent = results.join('\n') + '\nFAIL ' + e.stack; }
+};
+</script>
+

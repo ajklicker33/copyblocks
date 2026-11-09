@@ -6,8 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CopyBlocks</title>
     <link rel="stylesheet" href="blocksstyle.css">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/css/bootstrap.min.css" rel="stylesheet"
-        integrity="sha384-SgOJa3DmI69IUzQ2PVdRZhwQ+dy64/BUtbMJw1MZ8t5HZApcHrRKUc4W0kG879m7" crossorigin="anonymous">
+
 </head>
 
 <body>
@@ -18,7 +17,7 @@
             <button id="import-button">Import Data</button>
             <button id="clear-button">Clear All</button>
             <div class="layout-wrapper">
-        <button id="layout-button">
+        <button id="layout-button" aria-label="Choose column layout">
             <div class="grid-icon">
                 <div class="grid-dot"></div>
                 <div class="grid-dot"></div>
@@ -117,14 +116,20 @@
     </div>
 </div>
         <button id="add-button">Add Text Block</button>
-        <div id="text-blocks"></div>
+        <button id="cancel-edit" hidden>Cancel Edit</button>
+        <p id="status" role="status" aria-live="polite"></p>
     </div>
+    <section class="container blocks-section" aria-label="Saved text blocks">
+        <label for="tag-filter">Filter by hashtag:</label>
+        <select id="tag-filter"><option value="">All hashtags</option></select>
+        <span id="block-count"></span>
+        <p id="empty-state">No blocks to show. Add a text block above.</p>
+        <div id="text-blocks"></div>
+    </section>
     <input type="file" id="file-input" class="hidden" accept=".json">
     <div class="copied-feedback">Copied!</div>
     <script src="blockscript.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.5/dist/js/bootstrap.bundle.min.js"
-        integrity="sha384-k6d4wzSIapyDyv1kpU366/PK5hCdSbCRGRCMv+eplOQJWyd1fbcAu9OCUj5zNLiq"
-        crossorigin="anonymous"></script>
+
 </body>
 
 </html>
