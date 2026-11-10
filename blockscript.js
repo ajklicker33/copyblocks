@@ -12,6 +12,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let selectedColor = '#f8f8f8';
     let storageBlocked = false;
     let dragging = null;
+    const openQR = new WeakSet();
+    const qrViews = new WeakMap();
     const notify = message => { $('#status').textContent = message; };
     function read(key) {
         try { return localStorage.getItem(key); }
@@ -109,6 +111,24 @@ document.addEventListener('DOMContentLoaded', () => {
         preview.hidden = !urls.length;
         $('#no-detected-links').hidden = !!urls.length;
     }
+    function qrView(block) {
+        const cached = qrViews.get(block);
+        if (cached && cached.text === block.text && cached.title === block.title) return cached.element;
+        const element = document.createElement('div'); element.className = 'qr-view';
+        try {
+            element.append(window.CopyBlocksQR.createCanvas(block.text, block.title));
+            const caption = document.createElement('p');
+            caption.textContent = 'Scan to read the full block text.';
+            element.append(caption);
+        } catch (error) {
+            const message = document.createElement('p'); message.className = 'qr-error';
+            message.setAttribute('role', 'status');
+            message.textContent = error.message || 'Could not generate this QR code. Copying still works.';
+            element.append(message);
+        }
+        qrViews.set(block, { text: block.text, title: block.title, element });
+        return element;
+    }
     function render() {
         const currentFilter = filter.value;
         const blockLinks = new Map(blocks.map(block => [block, linksIn(block.text)]));
@@ -158,6 +178,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 card.append(links);
             }
             card.append(actions);
+            const qrButton = button(openQR.has(block) ? 'Hide QR' : 'Show QR', () => {
+                if (openQR.has(block)) {
+                    openQR.delete(block); qrViews.delete(block);
+                    card.querySelector('.qr-view')?.remove();
+                } else {
+                    openQR.add(block); card.append(qrView(block));
+                }
+                qrButton.textContent = openQR.has(block) ? 'Hide QR' : 'Show QR';
+                qrButton.setAttribute('aria-expanded', String(openQR.has(block)));
+            });
+            qrButton.setAttribute('aria-expanded', String(openQR.has(block)));
+            actions.append(qrButton);
+            if (openQR.has(block)) card.append(qrView(block));
             card.addEventListener('click', () => copy(block.text));
             card.addEventListener('dragstart', event => {
                 dragging = block; card.classList.add('dragging'); event.dataTransfer.setData('text/plain', String(index));

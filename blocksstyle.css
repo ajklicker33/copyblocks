@@ -369,6 +369,10 @@ color: black;
 .link-list li { min-width: 0; margin-bottom: 6px; overflow-wrap: anywhere; }
 .link-list a { overflow-wrap: anywhere; color: #123a60; text-decoration: underline; }
 #tag-filter { max-width: 100%; }
+.qr-view { margin-top: 12px; }
+.qr-code { display: block; width: auto; max-width: 100%; height: auto; image-rendering: pixelated; }
+.qr-view p { margin: 8px 0 0; overflow-wrap: anywhere; }
+.qr-error { color: #701212; }
 .header-buttons { flex-wrap: wrap; gap: 8px; }
 #status { min-height: 1.5em; }
 #block-count { margin-left: 12px; }

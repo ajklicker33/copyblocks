@@ -187,6 +187,67 @@ frame.onload = async () => {
         filterBy('#work'); check(d.querySelectorAll('.text-block').length === 2, 'hashtag filtering remains available alongside link filtering');
         await importJSON(JSON.stringify([{ text: 'https://example.org/new-import' }]));
         check(d.querySelectorAll('#tag-filter optgroup[label="Detected links"] option').length === 1 && d.querySelector('#tag-filter').value === '', 'import refreshes combined filter and resets missing selection');
+        // jsQR is a separate, test-only decoder. Decode pixels from the actual UI canvas.
+        const decodeQR = () => {
+            const canvas = d.querySelector('.qr-code');
+            if (!canvas) throw new Error('Missing QR canvas');
+            const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+            return jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: 'dontInvert' });
+        };
+        let qrGenerations = 0;
+        const originalEncode = w.qrcodegen.QrCode.encodeSegments;
+        w.qrcodegen.QrCode.encodeSegments = function (...args) {
+            qrGenerations++; return originalEncode.apply(this, args);
+        };
+        const samples = [
+            ['mixed case', 'AbCdEf 123'],
+            ['Unicode', '🍒 café 日本語 e\u0301'],
+            ['URL', 'https://example.com/CaseSensitive?Token=aB12#Section'],
+            ['multiline whitespace', '  first line\nSecond line\n  '],
+            ['leading Unicode BOM', '\uFEFFKeep this character']
+        ];
+        for (const [label, payload] of samples) {
+            const before = qrGenerations;
+            await importJSON(JSON.stringify([{ title: label, text: payload }]));
+            check(!d.querySelector('.qr-view') && qrGenerations === before, `QR stays lazy on import: ${label}`);
+            action('Show QR');
+            const decoded = decodeQR();
+            check(decoded?.data === payload, `independent QR pixel decode preserves ${label}`);
+            check(decoded.chunks.some(chunk => chunk.type === 'eci' && chunk.assignmentNumber === 26), `QR declares UTF-8: ${label}`);
+            action('Hide QR');
+            check(!d.querySelector('.qr-view'), `Hide QR releases canvas: ${label}`);
+        }
+        let qrCopyCount = 0;
+        Object.defineProperty(w.navigator, 'clipboard', { configurable: true, value: { writeText: async value => { copied = value; qrCopyCount++; } } });
+        action('Show QR'); action('Hide QR'); action('Show QR');
+        check(qrCopyCount === 0, 'QR controls do not copy block text');
+        click('.text-content'); await until(() => qrCopyCount === 1, 'copy while QR visible');
+        check(copied === samples.at(-1)[1], 'ordinary block click still copies exact body while QR visible');
+        const beforeEdit = qrGenerations;
+        action('Edit'); d.querySelector('#new-text').value = 'Edited 🍒\nKeep CASE'; click('#add-button');
+        check(qrGenerations === beforeEdit + 1 && decodeQR()?.data === 'Edited 🍒\nKeep CASE', 'visible QR regenerates after edit');
+        const beforeLayout = qrGenerations;
+        filterBy('');
+        check(qrGenerations === beforeLayout && !!d.querySelector('.qr-code'), 'unrelated render reuses current QR image');
+        check(d.querySelector('.qr-code').getAttribute('role') === 'img' && d.querySelector('.qr-code').getAttribute('aria-label').includes('exact block text'), 'QR canvas has accessible description');
+        await importJSON(JSON.stringify([{ text: 'New import' }]));
+        check(!d.querySelector('.qr-view'), 'replacement import removes stale visible QR');
+        action('Show QR'); check(decodeQR()?.data === 'New import', 'new import generates its own QR');
+        action('Delete'); check(!d.querySelector('.qr-code'), 'deleting block removes QR view');
+        await importJSON(JSON.stringify([{ text: 'a'.repeat(2330) }]));
+        action('Show QR');
+        check(decodeQR()?.data === 'a'.repeat(2330), 'maximum 2330-byte payload round trips at medium correction');
+        check(d.documentElement.scrollWidth <= w.innerWidth && d.querySelector('.qr-code').getBoundingClientRect().width <= d.querySelector('.text-block').clientWidth, 'QR fits 320px viewport');
+        for (const payload of ['a'.repeat(2331), '🍒'.repeat(583)]) {
+            await importJSON(JSON.stringify([{ text: payload }])); action('Show QR');
+            check(!d.querySelector('.qr-code') && d.querySelector('.qr-error').textContent.includes('2,330 UTF-8 bytes'), 'oversized QR shows useful byte-limit message');
+            action('Copy'); await until(() => copied === payload, 'oversized block still copies');
+            check(copied === payload, 'QR size error leaves exact copying usable');
+            action('Edit'); d.querySelector('#new-text').value = 'Shortened'; click('#add-button');
+            check(decodeQR()?.data === 'Shortened', 'shortening oversized block recovers visible QR');
+        }
+        await importJSON(JSON.stringify([{ text: '\ud800' }])); action('Show QR');
+        check(!d.querySelector('.qr-code') && d.querySelector('.qr-error').textContent.includes('invalid Unicode'), 'invalid surrogate is rejected instead of silently changing QR data');
         if (new URLSearchParams(location.search).has('forceFailure')) check(false, 'intentional runner failure probe');
         output.dataset.status = 'passed';
         output.textContent = results.join('\n') + `\nALL PASSED (${results.length} assertions)`;

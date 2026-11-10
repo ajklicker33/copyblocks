@@ -9,6 +9,7 @@ A local-first text clipboard. Open `index.html` in a browser; no build or extern
 - Export all blocks as JSON and restore validated backups. Imports replace the collection after confirmation; invalid backups leave existing blocks untouched.
 - Existing `textBlocks`, `preferredColumns` and `preferredColor` storage remains compatible.
 - Per-block colors, background colors and column layout preferences.
+- Local Show QR / Hide QR per block, generated on demand from exact text with Unicode support; no network service or CDN.
 - Dynamic, case-insensitive hashtag filtering from titles and text, including Unicode tags. Options refresh after edits and imports. Reordering is disabled while filtered to avoid ambiguous ordering.
 - Long strings wrap inside responsive cards. Saved blocks have their own section.
 - Keyboard-accessible controls and visible clipboard/storage error feedback.
@@ -24,10 +25,10 @@ Commit `a24a0ae` replaced the application with unused class scaffolding, removin
 | --- | --- | --- |
 | P0 | Restore existing controls and persistence | Implemented; preserve the original backup shape and storage keys. |
 | P1 | Edit existing blocks | Implemented with Save Changes and Cancel Edit. |
-| P1 | Hashtag filtering | Current filtering derives from body/title text. Step 7 replaces this with separate tag metadata; prioritize Step 7 before Steps 3–6. |
+| P1 | Hashtag filtering | Current filtering derives from body/title text. Step 7 replaces this with separate tag metadata; prioritize Step 7 before Steps 4–6. |
 | P1 | Wrapping / separate blocks div | Implemented responsive wrapping and a separate saved-blocks section. |
 | P2 | Detect links | Implemented in Step 2: detected-link lists, live editor preview and URL filtering preserve card-click copying. |
-| P2 | Barcode / QR | Defer pending scanner and payload requirements. Use a bundled encoder and generate on demand from the current text; test Unicode, size limits and scan round trips. Veto case normalization: changing case can corrupt URLs, passwords and identifiers. Font appearance does not alter encoded data. |
+| P2 | Barcode / QR | QR implemented in Step 3 with a bundled encoder and independent decode tests. Linear barcodes remain deferred pending scanner/symbology requirements. Veto case normalization: exact text is preserved. |
 | P2 | Request feature | Use [GitHub issues](https://github.com/ajklicker33/Copyblocks/issues) now. Defer an in-app submission service until there is a need for authentication, spam controls and maintenance. |
 | P3 | Document Picture-in-Picture | Optional experiment: detect the API at runtime, expose the control only when available, and keep the main window fully usable. Test lifecycle and shared state before shipping; do not rely on a hard-coded browser list. |
 | P3 | Electron | Defer packaging until a concrete desktop-only need exists. Veto adding a desktop runtime solely to fix browser controls. |
@@ -38,7 +39,7 @@ In an editor that provides it, right-click `index.html` and choose **Open in Int
 
 ## Executable implementation plan
 
-To start a task, prompt **"Begin work on Step X in README.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–2 are **Complete**; Steps 3–7 are **Not started**. Step 7 (separate tag metadata) is the recommended next task. The earlier regression fix and working features above are already implemented.
+To start a task, prompt **"Begin work on Step X in README.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3 are **Complete**; Steps 4–7 are **Not started**. Step 7 (separate tag metadata) is the recommended next task. The earlier regression fix and working features above are already implemented.
 
 ### Instructions for the implementing agent
 
@@ -74,15 +75,21 @@ Implementation: HTTP(S) URLs are parsed and deduplicated dynamically at render t
 
 Detection rule: recognize explicit `http://` or `https://` at the start of text or after whitespace, an opening bracket, angle bracket or opening quote. Stop at whitespace, quotes or angle brackets. Trim trailing sentence punctuation (`.,!?:;`) and unmatched closing brackets; retain balanced parentheses inside URLs. Normalize with the browser URL parser and deduplicate the parsed result. Bare domains, relative paths and other schemes are not detected. Ambiguous literal trailing punctuation must be percent-encoded to remain part of a detected URL. The original body is never rewritten.
 
-Validation: all 67 browser assertions (40 baseline plus 27 link/list/filter checks) and actual JSON download verification passed. Checks cover duplicates, punctuation, query parameters, safe schemes, inert HTML, edit/import/reload refresh, exact copying, isolated-tab attributes 320px wrapping, live preview updates, combined filtering and stale-selection resets. Navigation is suppressed during the click-isolation test to avoid opening external sites; actual destination loading remains a manual check using an ordinary native link.
+Validation: all 67 browser assertions (40 baseline plus 27 link/list/filter checks) and actual JSON download verification passed. Checks cover duplicates, punctuation, query parameters, safe schemes, inert HTML, edit/import/reload refresh, exact copying, isolated-tab attributes, 320px wrapping, live preview updates, combined filtering and stale-selection resets. Navigation is suppressed during the click-isolation test to avoid opening external sites; actual destination loading remains a manual check using an ordinary native link.
 
 ### Step 3 — Generate QR codes on demand
 
-**Status:** Not started. **Priority:** P2.
+**Status:** Complete (2026-11-09). **Priority:** P2.
 
 Scope: implement QR first, using a bundled, licensed encoder with no network requests or CDN dependency. Add a Show QR / Hide QR action per block, encoding the exact text on demand. Keep generation lazy; regenerate visible codes after an edit and release removed views. Provide an accessible text description and an understandable message for content that exceeds the encoder's capacity.
 
 Acceptance: independent decoding round trips preserve mixed case, Unicode, URLs and multiline text; ordinary block clicks still copy; QR actions do not accidentally copy; oversized input leaves the application usable; imports and edits cannot display stale codes. Record the library version/license and tested capacity. Veto case normalization. Linear barcodes remain deferred until a symbology and scanner requirement are supplied; they are not part of this step.
+
+Implementation: local canvas rendering uses the bundled MIT-licensed Project Nayuki encoder (publisher snapshot dated 2026-11-09, pinned by SHA-256). Show QR generates lazily; Hide QR removes its cached view. Visible codes update after edits, unchanged codes are reused, and replacement imports/deletions discard old views. The exact UTF-8 body is encoded with ECI 26 and medium error correction. Canvas descriptions support assistive technology; oversized or invalid Unicode input produces a message while copying remains available. QR visibility and images are never persisted in backups.
+
+Validation: all 104 browser assertions plus real JSON download verification passed. The independent jsQR 1.4.0 decoder recovered exact mixed case, Unicode/emoji, combining characters, URLs, multiline whitespace and leading BOM text from rendered canvas pixels. Tests also cover lazy generation, show/hide isolation, regeneration after edits/imports, deletion, accessible description, 320px fit and the 2,330-byte limit. Both 2,331 ASCII bytes and 2,332 UTF-8 bytes fail gracefully; shorter edits recover. Invalid surrogate text is rejected without substitution. Dependency source identifiers, hashes and licenses are in [vendor/README.md](vendor/README.md).
+
+Limitation: physical camera/scanner testing remains manual, particularly for dense codes reduced to fit a narrow card. The automated decoder reads the original canvas pixels, not a photograph or CSS-scaled screenshot. Linear barcodes are still outside this step.
 
 ### Step 4 — Add a feature-request entry point
 
@@ -110,7 +117,7 @@ Acceptance: record a go/no-go decision, reasons and measurable criteria that wou
 
 ### Step 7 — Separate tags from copied content
 
-**Status:** Not started. **Priority:** P1; recommended next after Step 2. Numbered 7 to preserve existing step identifiers.
+**Status:** Not started. **Priority:** P1; recommended next after Step 3. Numbered 7 to preserve existing step identifiers.
 
 Scope: add a dedicated Tags field to the editor and store tags as a `tags` array on each block, separate from `title` and `text`. Accept comma-separated labels, trim whitespace and an optional leading `#`, remove empty labels, and deduplicate case-insensitively. Render tags as separate chips and build the filter from tag metadata only. Editing, export, import and reload must preserve tags. Copy always uses the exact body; never append metadata.
 
