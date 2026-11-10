@@ -50,7 +50,8 @@ frame.onload = async () => {
         click('#clear-button');
         click('#layout-button'); check(d.querySelector('.layout-dropdown').classList.contains('show'), 'layout opens');
         click('[data-columns="2"]'); check(w.localStorage.getItem('preferredColumns') === '2', 'layout persists');
-        click('#color-button'); click('.color-option[data-color="#FFB0FF"]');
+        d.querySelector('#background-color-picker').value = '#ffb0ff';
+        d.querySelector('#background-color-picker').dispatchEvent(new w.Event('input'));
         check(w.localStorage.getItem('preferredColor') === '#FFB0FF', 'background persists');
         const exactText = '  Hello 🍒\n<svg onload=alert(1)>  ';
         add('First #Work', exactText, 'Work'); add('Second', 'x'.repeat(500) + ' #other', 'other');
@@ -345,6 +346,69 @@ frame.onload = async () => {
         check(d.querySelector('#tag-filter').value === '' && chip('replacement').getAttribute('aria-pressed') === 'false', 'import clears missing selected tag and pressed state');
         chip('replacement').click(); action('Edit'); d.querySelector('#block-tags').value = ''; click('#add-button');
         check(d.querySelector('#tag-filter').value === '' && !d.querySelector('.tag-chip'), 'editing away final active chip restores All blocks');
+        const setColorField = (selector, value) => {
+            const field = d.querySelector(selector); field.value = value;
+            field.dispatchEvent(new w.Event('input', { bubbles: true }));
+        };
+        check(!d.querySelector('.color-dot, .color-option, #color-button'), 'preset color selectors are replaced');
+        setColorField('#note-color-picker', '#123456');
+        check(d.querySelector('#note-color-hex').value === '#123456', 'note picker synchronizes HEX field');
+        setColorField('#note-color-hex', 'aabbcc');
+        check(d.querySelector('#note-color-picker').value === '#aabbcc' && d.querySelector('#note-color-hex').value === '#AABBCC', 'HEX entry normalizes and updates picker');
+        const beforeBadHex = JSON.stringify(stored());
+        setColorField('#note-color-hex', '#12');
+        add('Invalid draft', 'Must not save');
+        check(d.querySelector('#note-color-hex').getAttribute('aria-invalid') === 'true' && !!d.querySelector('#note-color-error').textContent && JSON.stringify(stored()) === beforeBadHex, 'incomplete HEX shows validation and prevents saving');
+        check(d.querySelector('#note-color-picker').value === '#aabbcc', 'invalid input preserves last valid picker color');
+        setColorField('#note-color-hex', '#000000');
+        click('#clear-button'); add('Dark', 'Color never enters copied text', 'dark');
+        check(stored()[0].color === '#000000' && d.querySelector('.note-color-value').textContent === '#000000', 'note saves canonical HEX and displays color label');
+        Object.defineProperty(w.navigator, 'clipboard', { configurable: true, value: { writeText: async value => { copied = value; } } });
+        action('Copy'); await until(() => copied === 'Color never enters copied text', 'copy colored note');
+        check(copied === 'Color never enters copied text', 'color label stays out of copied text');
+        action('Show QR'); check(decodeQR()?.data === 'Color never enters copied text', 'color label stays out of QR data');
+        setColorField('#note-color-hex', '#ABCDEF');
+        action('Edit');
+        check(d.querySelector('#note-color-hex').value === '#000000', 'editing loads stored note color');
+        setColorField('#note-color-hex', '#ffffff'); click('#cancel-edit');
+        check(stored()[0].color === '#000000' && d.querySelector('#note-color-hex').value === '#ABCDEF', 'cancel preserves saved color and restores creator color');
+        action('Edit'); setColorField('#note-color-hex', '#FF0000'); click('#add-button');
+        check(stored()[0].color === '#FF0000' && d.querySelector('.note-color-value').textContent === '#FF0000', 'edit saves changed color and refreshes label');
+        setColorField('#background-color-hex', '#102030');
+        check(d.querySelector('#background-color-picker').value === '#102030' && w.localStorage.getItem('preferredColor') === '#102030' && stored()[0].color === '#FF0000', 'background HEX persists without modifying notes');
+        setColorField('#background-color-hex', 'not-a-color');
+        check(w.localStorage.getItem('preferredColor') === '#102030' && w.getComputedStyle(d.body).backgroundColor === 'rgb(16, 32, 48)', 'invalid background input retains applied color');
+        setColorField('#background-color-picker', '#fedcba');
+        check(d.querySelector('#background-color-hex').value === '#FEDCBA' && d.querySelector('#background-color-error').textContent === '', 'picker recovers invalid background HEX state');
+        await reload();
+        check(stored()[0].color === '#FF0000' && d.querySelector('#background-color-hex').value === '#FEDCBA', 'note and page colors survive reload');
+        const legacyColors = ['#abc', 'rgb(12, 34, 56)', 'navy', 'rgba(1, 2, 3, 0.5)', 'transparent'];
+        await importJSON(JSON.stringify(legacyColors.map(color => ({ text: 'Legacy', color }))));
+        check(stored().map(block => block.color).join() === '#AABBCC,#0C2238,#000080,#F8F8F8,#F8F8F8', 'legacy HEX RGB names and transparency normalize deterministically');
+        const colorBackup = JSON.stringify(stored()); await importJSON(colorBackup);
+        check(JSON.stringify(stored()) === colorBackup, 'normalized colors round trip through backup');
+        w.localStorage.setItem('preferredColor', 'rgba(0, 0, 0, 0.5)'); await reload();
+        check(d.querySelector('#background-color-hex').value === '#F0F0F0', 'legacy transparent background uses opaque page default');
+        const palette = ['#000000', '#FFFFFF', '#777777', '#FF0000', '#00FF00', '#0000FF'];
+        await importJSON(JSON.stringify(palette.map(color => ({ title: 'Contrast', text: 'https://example.org/', color, tags: ['contrast'] }))));
+        const luminance = css => {
+            const channels = css.match(/[\d.]+/g).slice(0, 3).map(Number).map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+            return channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722;
+        };
+        const contrast = (a, b) => (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+        for (const card of d.querySelectorAll('.text-block')) {
+            const background = luminance(w.getComputedStyle(card).backgroundColor);
+            check(['.block-title', '.text-content', '.link-list a'].every(selector => contrast(luminance(w.getComputedStyle(card.querySelector(selector)).color), background) >= 4.5), `readable title body and link contrast on ${card.querySelector('.note-color-value').textContent}`);
+            check(['.tag-chip', '.note-color-value', '.block-actions button'].every(selector => {
+                const style = w.getComputedStyle(card.querySelector(selector));
+                return contrast(luminance(style.color), luminance(style.backgroundColor)) >= 4.5;
+            }), 'chips labels and controls have readable opaque surfaces');
+        }
+        check(d.documentElement.scrollWidth <= w.innerWidth, 'color controls fit the 320px viewport');
+        check(['note-color', 'background-color'].every(prefix => ['picker', 'hex'].every(suffix => {
+            const field = d.querySelector(`#${prefix}-${suffix}`); field.focus();
+            return d.activeElement === field && field.labels.length === 1;
+        })), 'color inputs are focusable with explicit labels');
         if (new URLSearchParams(location.search).has('forceFailure')) check(false, 'intentional runner failure probe');
         output.dataset.status = 'passed';
         output.textContent = results.join('\n') + `\nALL PASSED (${results.length} assertions)`;

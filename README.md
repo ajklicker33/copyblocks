@@ -8,7 +8,7 @@ A local-first text clipboard. Open `index.html` in a browser; no build or extern
 - Drag blocks onto another block to reorder, or use Move up / Move down.
 - Export all blocks as JSON and restore validated backups. Imports replace the collection after confirmation; invalid backups leave existing blocks untouched.
 - Existing `textBlocks`, `preferredColumns` and `preferredColor` storage remains compatible.
-- Per-block colors, background colors and column layout preferences.
+- Note/background color pickers with synchronized HEX fields, per-note color labels, contrast-aware note text and column layout preferences.
 - Local Show QR / Hide QR per block, generated on demand from exact text with Unicode support; no network service or CDN.
 - Dedicated comma-separated Tags field, separate tag chips and case-insensitive filtering from tag metadata, including Unicode labels. Tags are excluded from copied text and QR codes. Options refresh after edits and imports. Reordering is disabled while filtered to avoid ambiguous ordering.
 - Long strings wrap inside responsive cards. Saved blocks have their own section.
@@ -27,7 +27,10 @@ Commit `a24a0ae` replaced the application with unused class scaffolding, removin
 | P1 | Edit existing blocks | Implemented with Save Changes and Cancel Edit. |
 | P1 | Tag filtering | Implemented in Step 7: separate tag metadata, safe chips and case-insensitive filtering. Legacy body/title hashtags remain unchanged and are not inferred as tags. |
 | P1 | Tag chip appearance and interaction | Implemented in Step 8: smaller, muted button chips toggle the matching tag filter with a checkmark and keyboard support. |
-| P1 | Color picker and color value | Planned in Step 10: replace preset block/background selectors with pickers and synchronized HEX fields; display each note's color value separately from its tags/body. |
+| P1 | Color picker and color value | Implemented in Step 10: native note/background pickers, synchronized HEX fields, per-note color labels and contrast-aware text. |
+| P1 | Editing visibility | Planned in Step 13: temporarily show the edited block first with an animated dotted outline. |
+| P1 | Block action placement | Planned in Step 14: evenly spaced top Copy/Edit/Delete controls, bottom movement controls, and code controls immediately above movement. |
+| P2 | Words/icons toggle | Planned in Step 15: a top-of-page preference switches block action labels between words and accessible icons. |
 | P1 | Wrapping / separate blocks div | Implemented responsive wrapping and a separate saved-blocks section. |
 | P2 | Detect links | Implemented in Step 2: detected-link lists, live editor preview and URL filtering preserve card-click copying. |
 | P2 | Barcode / QR | QR implemented in Step 3 with a bundled encoder and independent decode tests. Linear barcodes remain deferred pending scanner/symbology requirements. Veto case normalization: exact text is preserved. |
@@ -44,7 +47,7 @@ In an editor that provides it, right-click `index.html` and choose **Open in Int
 
 ## Executable implementation plan
 
-To start a task, prompt **"Begin work on Step X in README.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7 and 8 are **Complete**; Steps 4–6 and 9–12 are **Not started**. Recommended order: **10 → 11 → 9 → 12 → 4**: improve colors, establish per-note options, then expand code presentation/generation. Steps 5–6 remain lower-priority optional work. The earlier regression fix and working features above are already implemented.
+To start a task, prompt **"Begin work on Step X in README.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7, 8 and 10 are **Complete**; Steps 4–6, 9 and 11–15 are **Not started**. Recommended order: **13 → 14 → 15 → 11 → 9 → 12 → 4**: improve edit visibility and action placement, add the label preference, then expand creation options and code generation. Steps 5–6 remain lower-priority optional work. The earlier regression fix and working features above are already implemented.
 
 ### Instructions for the implementing agent
 
@@ -172,11 +175,17 @@ Acceptance: a block with three distinct links shows three matching link/QR ident
 
 ### Step 10 — Replace color presets with a picker and HEX value
 
-**Status:** Not started. **Priority:** P1.
+**Status:** Complete (2026-11-10). **Priority:** P1.
 
 Scope: replace the existing note color dots and page-background preset menu with native color pickers and synchronized editable HEX fields. Use the existing `color` and `preferredColor` storage fields, normalizing supported opaque colors to `#RRGGBB`. Show a small, muted color-value label on each note, such as `#F8F8F8`. This is presentation metadata, not a filtering tag, copied text or QR/barcode payload. HEX is the default numeric representation; a separate RGB entry mode is optional only if it materially improves usability.
 
 Acceptance: picker changes update the HEX field and vice versa; invalid/incomplete input shows validation without replacing the last valid color. Existing HEX, RGB and named CSS colors load compatibly; define and document a deterministic opaque fallback for legacy transparent colors. Create/edit/cancel/reload/export/import preserve the intended color. Arbitrary selected colors retain readable text, links, controls, chip labels and focus indicators through contrast-aware styling. Changes to background color never overwrite note colors. Verify keyboard access and narrow layouts.
+
+Implementation: native note/background color inputs replace the preset dots and color menu. Six-digit HEX fields accept an optional `#`, normalize to uppercase, and synchronize with their pickers. Invalid or incomplete entries retain the last valid color, show an inline message and prevent saving a note until corrected. Editing loads the stored note color; cancel/save restore the creator's previous color. Background changes use `preferredColor` independently of note colors. Each note displays a neutral HEX label excluded from tags, copied text and QR payloads.
+
+Legacy behavior: existing supported opaque CSS HEX/RGB/named colors normalize to sRGB `#RRGGBB` on load/import. Partially transparent, transparent, invalid or context-dependent colors use `#F8F8F8` for notes and `#F0F0F0` for the page. Storage is not rewritten merely by loading; normalized values are saved/exported on the next relevant action. The fallback deliberately avoids background-dependent alpha compositing.
+
+Validation: all 177 browser assertions plus actual downloaded JSON verification passed. Checks cover field synchronization, invalid input, edit/cancel, reloads, backup round trips, legacy conversion, transparent fallback, background/note isolation, copy/QR exclusion, input labels/focus and 320px fit. Computed body/title/link contrast and opaque chip/label/button surfaces passed a 4.5:1 check across black, white, gray and primary-color notes. Text uses black or white based on relative luminance; focus rings use dark and white layers. Native operating-system picker dialog interaction remains a manual check; automated tests exercise its input events and editable HEX alternative.
 
 ### Step 11 — Saved QR and Detect links creation options
 
@@ -199,6 +208,36 @@ Scope: implement a bundled, licensed barcode encoder and expose the functional *
 Checked notes display their barcode alongside the full text by default, persist `showBarcode`, and restore the default after reload. QR and barcode checkboxes are independent and may both be checked. Provide accessible descriptions and session Show/Hide behavior consistent with Step 11. Encode the complete original body where supported; never silently trim, uppercase, truncate, substitute characters or encode a different field. Unsupported content gets an explanatory message and leaves copying/QR functional. Keep link-specific barcode generation out of this step; link/QR numbering remains governed by Step 9.
 
 Acceptance: an independent decoder recovers exact supported payloads from rendered barcodes. Test checked/unchecked/both-code defaults, editing, reloads, imports, blank/oversized/unsupported Unicode payloads, invalid settings, hiding/reopening and narrow layouts. Record encoder version/license, symbology and tested limits. Confirm scan compatibility on the intended physical scanner before claiming that hardware workflow is validated; automated decoding alone is not hardware validation. No network service or CDN at runtime.
+
+### Step 13 — Bring the edited block to the top and highlight it
+
+**Status:** Not started. **Priority:** P1.
+
+Scope: while editing, temporarily show the existing block first in the saved-block section, immediately below the creator/editor, with a moving dotted outline. Mark it visibly as **Editing** and expose that state to assistive technology. Use a lightweight CSS animation that does not shift layout or interfere with buttons, links, focus indicators or text selection. Honor `prefers-reduced-motion` with a static dotted outline.
+
+The promotion is display-only: preserve the underlying saved order and export order. Save or Cancel removes the edit highlight and restores normal placement. Editing a different block moves the highlight to that block without creating a duplicate. If filtering would hide the edited block, keep it visible in the first position as an explicitly labeled editing exception; report filtered matches separately from that exception. Freeze reordering while editing to avoid confusing temporary placement with a saved order change. Delete, clear and confirmed replacement import must cleanly end the affected edit session.
+
+Acceptance: only one block is marked Editing; it remains discoverable during filtering and after unrelated renders. Save/Cancel, switching edits, deletion and imports clear or transfer the state correctly. Saved/exported order never changes merely from entering/exiting edit mode. The outline stays visible on all note colors and at 320px, has a reduced-motion fallback, and does not disrupt keyboard focus or existing QR/tag/link behavior. Edit highlighting and temporary placement are never persisted in backups.
+
+### Step 14 — Arrange block actions along top and bottom borders
+
+**Status:** Not started. **Priority:** P1.
+
+Scope: place **Copy**, **Edit** and **Delete** in an evenly spaced row aligned to the top border of each block. Reserve space so the controls do not overlap the title, the editing outline or content. Place **Move up** and **Move down** in an evenly spaced row at the bottom of the block. Put the **Show/Hide QR** and, when implemented, **Show/Hide barcode** controls in a separate row immediately above the movement row. Keep the movement row anchored at the bottom even when neighboring cards have different content heights.
+
+Rendered code images remain content above these bottom control rows; opening a code must not move movement controls into the middle of the block. Do not add a nonfunctional barcode control before Step 12. When barcode support arrives, use the same code-control row. Maintain equal spacing for whichever code controls exist. Preserve all current confirmation, filtering, editing, copy and Show/Hide behavior.
+
+Acceptance: inspect short/long text, titles, tags, multiple links, visible QR images and error messages at mobile and desktop widths. Top and bottom controls remain evenly distributed without overflow, clipped focus rings or title overlap. Keyboard tab order follows the visual order; control clicks never trigger the card's copy handler. Existing disabled movement rules, including editing rules if Step 13 is present, remain effective. Test with the words/icons preference if Step 15 is already implemented.
+
+### Step 15 — Toggle block actions between words and icons
+
+**Status:** Not started. **Priority:** P2. **Dependency:** Step 14.
+
+Scope: add a clearly labeled button at the top of the page that toggles block action controls between words and icons. Default to words and persist the preference in its own local-storage setting. Apply it to Copy, Edit, Delete, Move up/down and Show/Hide QR/barcode when available. The toggle itself retains a readable text label describing the available switch, such as **Use icons** / **Use words**; do not turn it into an unexplained icon.
+
+Use small local SVG icons with no network dependency. Keep native button semantics and meaningful accessible names in both modes; SVG decoration is hidden from assistive technology. Provide descriptive hover/focus tooltips for icon-only controls. Keep disabled states, destructive-action distinctions, pressed/expanded state and Show-versus-Hide meaning clear. The preference changes presentation only, never action behavior, note data, copied text, code payloads or backup format.
+
+Acceptance: toggling updates existing blocks immediately, newly added/imported blocks use the selected mode, and the preference survives reload independently of note content. Switching during editing, filtering or QR display preserves those states and focus. Test mouse and keyboard activation, accessible names, tooltips, disabled movement, Show/Hide transitions, narrow layouts and unavailable storage. Step 12 must extend this presentation to barcode controls when they become available.
 
 ## Verification
 

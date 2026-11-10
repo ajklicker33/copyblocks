@@ -66,33 +66,14 @@
                     </div>
                 </div>
             </div>
-            <div>
-                <button id="color-button">Colors</button>
-                <div class="color-dropdown custom-dropdown">
-                    <div class="color-option" data-color="#f0f0f0" style="background-color: #f0f0f0">
-                        <span>Default</span>
-                    </div>
-                    <div class="color-option" data-color="#FFB0FF" style="background-color: #FFB0FF">
-                        <span>Pink</span>
-                    </div>
-                    <div class="color-option" data-color="#669966" style="background-color: #669966">
-                        <span>Sage</span>
-                    </div>
-                    <div class="color-option" data-color="#AFAFAF" style="background-color: #AFAFAF">
-                        <span>Grey AF</span>
-                    </div>
-                    <div class="color-option" data-color="#DEB887" style="background-color: #DEB887">
-                        <span>Burlywood</span>
-                    </div>
-                    <div class="color-option" data-color="#FEE3A2" style="background-color: #FEE3A2">
-                        <span>Yellow</span>
-                    </div>
-                </div>
-            </div>
-
-
-
-
+            <fieldset class="color-control">
+                <legend>Page background</legend>
+                <label for="background-color-picker">Color</label>
+                <input type="color" id="background-color-picker" value="#f0f0f0">
+                <label for="background-color-hex">HEX</label>
+                <input type="text" id="background-color-hex" class="hex-input" value="#F0F0F0" spellcheck="false" aria-describedby="background-color-error">
+                <span id="background-color-error" class="color-error" aria-live="polite"></span>
+            </fieldset>
         </div>
     </div>
     <br>
@@ -115,16 +96,14 @@
             <input type="text" id="block-tags" placeholder="work, urgent" aria-describedby="tags-help">
             <p id="tags-help">Separate tags with commas. Tags are not included in copied text or QR codes.</p>
         </div>
-        <div class="block-color-selector">
-    <label>Block Color:</label>
-    <div class="color-dots">
-        <div class="color-dot" data-color="#f8f8f8" style="background-color: #f8f8f8; border: 1px solid #ddd;" title="Default"></div>
-        <div class="color-dot" data-color="#FFB0FF" style="background-color: #FFB0FF" title="Pink"></div>
-        <div class="color-dot" data-color="#669966" style="background-color: #669966" title="Sage"></div>
-        <div class="color-dot" data-color="#DEB887" style="background-color: #DEB887" title="Burlywood"></div>
-        <div class="color-dot" data-color="#FEE3A2" style="background-color: #FEE3A2" title="Wheat"></div>
-    </div>
-</div>
+        <fieldset class="color-control">
+            <legend>Note color</legend>
+            <label for="note-color-picker">Color</label>
+            <input type="color" id="note-color-picker" value="#f8f8f8">
+            <label for="note-color-hex">HEX</label>
+            <input type="text" id="note-color-hex" class="hex-input" value="#F8F8F8" spellcheck="false" aria-describedby="note-color-error">
+            <span id="note-color-error" class="color-error" aria-live="polite"></span>
+        </fieldset>
         <button id="add-button">Add Text Block</button>
         <button id="cancel-edit" hidden>Cancel Edit</button>
         <p id="status" role="status" aria-live="polite"></p>

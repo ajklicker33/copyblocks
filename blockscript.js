@@ -10,13 +10,48 @@ document.addEventListener('DOMContentLoaded', () => {
     const filter = $('#tag-filter');
     let blocks = [];
     let editing = null;
-    let selectedColor = '#f8f8f8';
+    let selectedColor = '#F8F8F8';
+    let creatorColor = selectedColor;
+    let noteColorControl;
     let storageBlocked = false;
     let dragging = null;
     const openQR = new WeakSet();
     const qrViews = new WeakMap();
     const chipTargets = new WeakMap();
     const notify = message => { $('#status').textContent = message; };
+    function opaqueHex(value, fallback) {
+        if (!value || !CSS.supports('color', value) || /currentcolor|var\(|inherit|initial|unset|revert|light-dark/i.test(value)) return fallback;
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+        const context = canvas.getContext('2d');
+        context.fillStyle = value; context.fillRect(0, 0, 1, 1);
+        const rgba = context.getImageData(0, 0, 1, 1).data;
+        if (rgba[3] !== 255) return fallback;
+        return '#' + [...rgba].slice(0, 3).map(channel => channel.toString(16).padStart(2, '0')).join('').toUpperCase();
+    }
+    function foregroundFor(hex) {
+        const rgb = hex.slice(1).match(/../g).map(value => parseInt(value, 16) / 255)
+            .map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
+        return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722 > .179 ? '#000000' : '#FFFFFF';
+    }
+    function colorControl(prefix, initial, onChange) {
+        const picker = $(`#${prefix}-picker`), hex = $(`#${prefix}-hex`), error = $(`#${prefix}-error`);
+        function set(value) {
+            picker.value = value; hex.value = value.toUpperCase();
+            hex.setCustomValidity(''); hex.setAttribute('aria-invalid', 'false'); error.textContent = '';
+        }
+        picker.addEventListener('input', () => { set(picker.value); onChange(picker.value.toUpperCase()); });
+        hex.addEventListener('input', () => {
+            const match = hex.value.trim().match(/^#?([\da-f]{6})$/i);
+            if (!match) {
+                const message = 'Enter six HEX digits, for example #669966.';
+                hex.setCustomValidity(message); hex.setAttribute('aria-invalid', 'true'); error.textContent = message;
+                return;
+            }
+            const value = '#' + match[1].toUpperCase(); set(value); onChange(value);
+        });
+        set(initial);
+        return { set, valid: () => hex.reportValidity() };
+    }
     function read(key) {
         try { return localStorage.getItem(key); }
         catch { notify('Browser storage is unavailable. Export your blocks before closing.'); return null; }
@@ -40,7 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
             (b.color !== undefined && typeof b.color !== 'string') ||
             (b.tags !== undefined && (!Array.isArray(b.tags) || b.tags.some(tag => typeof tag !== 'string'))))) throw new Error('Invalid backup');
         return data.map(b => ({ title: b.title || 'Untitled', text: b.text, tags: normalizeTags(b.tags || []),
-            color: b.color && CSS.supports('color', b.color) ? b.color : '#f8f8f8' }));
+            color: opaqueHex(b.color, '#F8F8F8') }));
     }
     function save() {
         if (storageBlocked) { notify('Existing saved data could not be read. Export this session or import a valid backup before replacing it.'); return; }
@@ -49,12 +84,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const tags = block => block.tags.map(tag => tag.toLowerCase());
     function chooseColor(color) {
         selectedColor = color;
-        document.querySelectorAll('.color-dot').forEach(dot => {
-            dot.classList.toggle('selected', dot.dataset.color === color);
-            dot.setAttribute('aria-pressed', String(dot.dataset.color === color));
-        });
+        noteColorControl?.set(color);
     }
     function resetEditor() {
+        chooseColor(editing ? creatorColor : selectedColor);
         editing = null; title.value = ''; text.value = ''; tagInput.value = ''; add.textContent = 'Add Text Block';
         $('#cancel-edit').hidden = true;
         updateDetectedLinks();
@@ -167,11 +200,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (filter.value.startsWith('link:') && !blockLinks.get(block).includes(filter.value.slice(5))) return;
             const card = document.createElement('article'); card.className = 'text-block';
             card.style.backgroundColor = block.color; card.draggable = !filter.value;
+            card.style.color = foregroundFor(block.color);
             card.dataset.index = index;
             const heading = document.createElement('h2'); heading.className = 'block-title'; heading.textContent = block.title;
             const content = document.createElement('div'); content.className = 'text-content'; content.textContent = block.text;
             const actions = document.createElement('div'); actions.className = 'block-actions';
             actions.append(button('Copy', () => copy(block.text)), button('Edit', () => {
+                if (!editing) creatorColor = selectedColor;
                 editing = block; title.value = block.title; text.value = block.text; chooseColor(block.color);
                 tagInput.value = block.tags.join(', ');
                 updateDetectedLinks();
@@ -190,6 +225,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 actions.append(move);
             }
             card.append(heading, content);
+            const colorLabel = document.createElement('span'); colorLabel.className = 'note-color-value';
+            colorLabel.textContent = block.color.toUpperCase(); colorLabel.setAttribute('aria-label', `Note color ${block.color}`);
+            card.append(colorLabel);
             if (block.tags.length) {
                 const chips = document.createElement('ul'); chips.className = 'block-tags';
                 chips.setAttribute('aria-label', 'Tags');
@@ -260,6 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (focusedChip) (restoredChip || filter).focus({ preventScroll: true });
     }
     add.addEventListener('click', () => {
+        if (!noteColorControl.valid()) return;
         if (!text.value.trim()) { notify('Enter some text first.'); text.focus(); return; }
         const value = { title: title.value.trim() || 'Untitled', text: text.value, tags: normalizeTags([tagInput.value]), color: selectedColor };
         if (editing) Object.assign(editing, value); else blocks.push(value);
@@ -268,15 +307,17 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#cancel-edit').addEventListener('click', resetEditor);
     text.addEventListener('input', updateDetectedLinks);
     filter.addEventListener('change', render);
-    document.querySelectorAll('.color-dot').forEach(dot => {
-        dot.setAttribute('role', 'button'); dot.tabIndex = 0; dot.setAttribute('aria-label', dot.title);
-        dot.addEventListener('click', () => chooseColor(dot.dataset.color));
+    noteColorControl = colorControl('note-color', '#F8F8F8', chooseColor);
+    const backgroundColor = opaqueHex(read('preferredColor'), '#F0F0F0');
+    colorControl('background-color', backgroundColor, color => {
+        document.body.style.backgroundColor = color; write('preferredColor', color);
     });
+    document.body.style.backgroundColor = backgroundColor;
     function collapse() {
         document.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('show'));
-        $('#layout-button').setAttribute('aria-expanded', 'false'); $('#color-button').setAttribute('aria-expanded', 'false');
+        $('#layout-button').setAttribute('aria-expanded', 'false');
     }
-    for (const kind of ['layout', 'color']) {
+    for (const kind of ['layout']) {
         const trigger = $(`#${kind}-button`); const menu = $(`.${kind}-dropdown`);
         trigger.setAttribute('aria-expanded', 'false');
         trigger.addEventListener('click', event => {
@@ -287,16 +328,13 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('click', collapse);
     document.addEventListener('keydown', event => {
         if (event.key === 'Escape') collapse();
-        if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('.color-dot, .layout-option, .color-option')) {
+        if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('.layout-option')) {
             event.preventDefault(); event.target.click();
         }
     });
-    document.querySelectorAll('.layout-option, .color-option').forEach(option => { option.tabIndex = 0; option.setAttribute('role', 'button'); });
+    document.querySelectorAll('.layout-option').forEach(option => { option.tabIndex = 0; option.setAttribute('role', 'button'); });
     document.querySelectorAll('.layout-option').forEach(option => option.addEventListener('click', () => {
         list.style.setProperty('--columns', option.dataset.columns); write('preferredColumns', option.dataset.columns);
-    }));
-    document.querySelectorAll('.color-option').forEach(option => option.addEventListener('click', () => {
-        document.body.style.backgroundColor = option.dataset.color; write('preferredColor', option.dataset.color);
     }));
     $('#export-button').addEventListener('click', () => {
         const url = URL.createObjectURL(new Blob([JSON.stringify(blocks, null, 2)], { type: 'application/json' }));
@@ -325,7 +363,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const columns = read('preferredColumns');
     if (['1', '2', '3'].includes(columns)) list.style.setProperty('--columns', columns);
-    const background = read('preferredColor');
-    if (background && CSS.supports('color', background)) document.body.style.backgroundColor = background;
     chooseColor(selectedColor); render();
 });
