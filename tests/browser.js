@@ -13,9 +13,10 @@ const click = selector => d.querySelector(selector).click();
 const action = label => [...d.querySelectorAll('.block-actions button')].find(b => b.textContent === label).click();
 const status = () => d.querySelector('#status').textContent;
 const stored = () => JSON.parse(w.localStorage.getItem('textBlocks'));
-const add = (title, text) => {
+const add = (title, text, tags = '') => {
     d.querySelector('#block-title').value = title;
     d.querySelector('#new-text').value = text;
+    d.querySelector('#block-tags').value = tags;
     click('#add-button');
 };
 async function until(predicate, label) {
@@ -33,7 +34,8 @@ async function reload() {
 }
 function filterBy(value) {
     const filter = d.querySelector('#tag-filter');
-    filter.value = value; filter.dispatchEvent(new w.Event('change'));
+    filter.value = value ? (value.startsWith('#') ? 'tag:' + value.slice(1).toLowerCase() : 'link:' + value) : '';
+    filter.dispatchEvent(new w.Event('change'));
 }
 async function importJSON(value) {
     const input = d.querySelector('#file-input');
@@ -51,7 +53,7 @@ frame.onload = async () => {
         click('#color-button'); click('.color-option[data-color="#FFB0FF"]');
         check(w.localStorage.getItem('preferredColor') === '#FFB0FF', 'background persists');
         const exactText = '  Hello 🍒\n<svg onload=alert(1)>  ';
-        add('First #Work', exactText); add('Second', 'x'.repeat(500) + ' #other');
+        add('First #Work', exactText, 'Work'); add('Second', 'x'.repeat(500) + ' #other', 'other');
         check(d.querySelectorAll('.text-block').length === 2, 'add buttons create blocks');
         check(!d.querySelector('.text-content svg'), 'block text is not executable HTML');
         check(stored()[0].text === exactText, 'Unicode and whitespace persist exactly');
@@ -78,7 +80,7 @@ frame.onload = async () => {
         action('Edit'); d.querySelector('#new-text').value = 'Changed #new'; click('#add-button');
         check(d.querySelector('.text-content').textContent === 'Changed #new', 'editing updates existing block');
         check(d.querySelectorAll('.text-block').length === 2, 'editing does not duplicate');
-        filterBy('#other'); check(d.querySelectorAll('.text-block').length === 1, 'dynamic hashtag filtering');
+        filterBy('#other'); check(d.querySelectorAll('.text-block').length === 1, 'dynamic metadata tag filtering');
         check(d.querySelector('.block-title').textContent === 'Second', 'filter selects correct block');
         // Actual anchor download; the PowerShell runner checks the resulting file.
         document.querySelector('#export-expected').dataset.json = encodeURIComponent(JSON.stringify(stored(), null, 2));
@@ -173,9 +175,9 @@ frame.onload = async () => {
         click('#cancel-edit');
         check(d.querySelectorAll('#detected-links-list li').length === 0, 'cancel clears detected links preview');
         await importJSON(JSON.stringify([
-            { title: 'Linked #work', text: 'https://example.com/a https://example.com/a' },
+            { title: 'Linked #work', text: 'https://example.com/a https://example.com/a', tags: ['Work'] },
             { title: 'Other link', text: 'https://example.org/b' },
-            { title: 'Plain #work', text: 'No link' }
+            { title: 'Plain #work', text: 'No link', tags: ['work'] }
         ]));
         check(d.querySelectorAll('#tag-filter optgroup[label="Detected links"] option').length === 2, 'filter contains distinct detected links');
         filterBy('https://example.com/a');
@@ -183,8 +185,8 @@ frame.onload = async () => {
         check(!d.querySelector('.text-block').draggable, 'link filtering disables ambiguous reordering');
         action('Edit'); editor.value = 'https://example.net/replaced'; click('#add-button');
         check(d.querySelector('#tag-filter').value === '' && d.querySelectorAll('.text-block').length === 3, 'removed URL filter resets to All blocks');
-        check(![...d.querySelector('#tag-filter').options].some(option => option.value === 'https://example.com/a'), 'filter removes stale edited links');
-        filterBy('#work'); check(d.querySelectorAll('.text-block').length === 2, 'hashtag filtering remains available alongside link filtering');
+        check(![...d.querySelector('#tag-filter').options].some(option => option.value === 'link:https://example.com/a'), 'filter removes stale edited links');
+        filterBy('#work'); check(d.querySelectorAll('.text-block').length === 2, 'tag filtering remains available alongside link filtering');
         await importJSON(JSON.stringify([{ text: 'https://example.org/new-import' }]));
         check(d.querySelectorAll('#tag-filter optgroup[label="Detected links"] option').length === 1 && d.querySelector('#tag-filter').value === '', 'import refreshes combined filter and resets missing selection');
         // jsQR is a separate, test-only decoder. Decode pixels from the actual UI canvas.
@@ -248,6 +250,101 @@ frame.onload = async () => {
         }
         await importJSON(JSON.stringify([{ text: '\ud800' }])); action('Show QR');
         check(!d.querySelector('.qr-code') && d.querySelector('.qr-error').textContent.includes('invalid Unicode'), 'invalid surrogate is rejected instead of silently changing QR data');
+        click('#clear-button');
+        add('Tagged', 'Hello', ' ##Work, # #work, work, , urgent, #, URGENT, 日本語 ');
+        check(JSON.stringify(stored()[0].tags) === JSON.stringify(['Work', 'urgent', '日本語']), 'tags trim prefixes, empties and case-insensitive duplicates');
+        check([...d.querySelectorAll('.tag-chip')].map(el => el.textContent).join('|') === 'Work|urgent|日本語', 'tag chips display separate metadata safely');
+        action('Copy'); await until(() => copied === 'Hello', 'copy tagged block');
+        check(copied === 'Hello', 'tag metadata never enters copied body');
+        action('Show QR'); check(decodeQR()?.data === 'Hello', 'tag metadata never enters QR payload');
+        const taggedSnapshot = JSON.stringify(stored());
+        await reload();
+        check(JSON.stringify(stored()) === taggedSnapshot && d.querySelectorAll('.tag-chip').length === 3, 'tags survive real reload');
+        action('Edit');
+        check(d.querySelector('#block-tags').value === 'Work, urgent, 日本語', 'editor loads stored tags');
+        d.querySelector('#block-tags').value = 'cancelled'; click('#cancel-edit');
+        check(d.querySelector('#block-tags').value === '' && JSON.stringify(stored()) === taggedSnapshot, 'cancel clears editor without changing saved tags');
+        action('Edit'); d.querySelector('#block-tags').value = 'changed'; click('#add-button');
+        check(stored()[0].text === 'Hello' && stored()[0].tags.join() === 'changed', 'editing tags leaves body unchanged');
+        filterBy('#CHANGED');
+        action('Edit'); d.querySelector('#block-tags').value = ''; click('#add-button');
+        check(stored()[0].tags.length === 0 && !d.querySelector('.tag-chip') && d.querySelector('#tag-filter').value === '', 'removing final tag clears chips and stale filter');
+        const legacyBody = '  Literal #example 🍒\nhttps://example.com/#fragment  ';
+        await importJSON(JSON.stringify([{ title: '#TitleTag', text: legacyBody }]));
+        check(stored()[0].text === legacyBody && stored()[0].title === '#TitleTag' && stored()[0].tags.length === 0, 'legacy import defaults tags without changing text or title');
+        check(!d.querySelector('#tag-filter optgroup[label="Tags"]'), 'body/title hashtags and URL fragments do not create metadata tags');
+        // Verify old browser storage follows the same migration without rewriting it on load.
+        const legacyStored = JSON.stringify([{ title: '#TitleTag', text: legacyBody }]);
+        w.localStorage.setItem('textBlocks', legacyStored); await reload();
+        check(w.localStorage.getItem('textBlocks') === legacyStored && !d.querySelector('.tag-chip'), 'legacy storage is not rewritten or inferred on load');
+        action('Edit'); d.querySelector('#block-tags').value = 'migrated'; click('#add-button');
+        check(stored()[0].text === legacyBody && stored()[0].tags[0] === 'migrated', 'editing legacy tags preserves exact original body');
+        const beforeInvalidTags = w.localStorage.getItem('textBlocks');
+        for (const tags of [null, 'work', [42], [{}]]) {
+            await importJSON(JSON.stringify([{ text: 'Should not replace', tags }]));
+            check(w.localStorage.getItem('textBlocks') === beforeInvalidTags && status().startsWith('Invalid backup.'), 'invalid tag schema preserves existing collection');
+        }
+        await importJSON(JSON.stringify([
+            { title: 'HTML tag', text: 'Safe', tags: ['<img src=x onerror=alert(1)>', '日本語', 'Work'] },
+            { title: 'Case variant', text: 'Still safe', tags: ['work'] },
+            { title: 'URL-shaped tag', text: 'No links', tags: ['https://example.com/'] },
+            { title: 'Actual link', text: 'https://example.com/', tags: [] }
+        ]));
+        check(!d.querySelector('.tag-chip img') && d.querySelector('.tag-chip').textContent === '<img src=x onerror=alert(1)>', 'HTML-like and Unicode tags remain inert labels');
+        filterBy('#WORK'); check(d.querySelectorAll('.text-block').length === 2, 'case-insensitive tag filter matches casing variants');
+        filterBy('#https://example.com/');
+        check(d.querySelectorAll('.text-block').length === 1 && d.querySelector('.block-title').textContent === 'URL-shaped tag', 'URL-shaped tag cannot collide with link filter');
+        filterBy('https://example.com/');
+        check(d.querySelectorAll('.text-block').length === 1 && d.querySelector('.block-title').textContent === 'Actual link', 'link filter does not match URL-shaped tag metadata');
+        filterBy('');
+        const tagBackup = JSON.stringify(stored());
+        await importJSON(tagBackup);
+        check(JSON.stringify(stored()) === tagBackup, 'tagged backup round trip preserves metadata and exact bodies');
+        const chip = label => [...d.querySelectorAll('.tag-chip')].find(el => el.textContent.toLowerCase() === label.toLowerCase());
+        let chipCopies = 0;
+        Object.defineProperty(w.navigator, 'clipboard', { configurable: true, value: { writeText: async () => { chipCopies++; } } });
+        chip('Work').click();
+        check(d.querySelector('#tag-filter').value === 'tag:work' && d.querySelectorAll('.text-block').length === 2, 'chip activates matching tag filter');
+        check([...d.querySelectorAll('.tag-chip')].filter(el => el.textContent.toLowerCase() === 'work').every(el => el.getAttribute('aria-pressed') === 'true'), 'all matching chip pressed states are synchronized');
+        check(d.activeElement === chip('Work'), 'chip focus survives filtered render');
+        check(w.getComputedStyle(chip('Work'), '::before').content.includes('✓'), 'selected chip has a non-color checkmark indicator');
+        chip('work').click();
+        check(d.querySelector('#tag-filter').value === '' && d.querySelectorAll('.text-block').length === 4, 'repeat chip click clears filter');
+        check(chipCopies === 0, 'chip clicks never copy body');
+        // Browser protocol input invokes native button behavior, not synthetic key listeners.
+        async function pressChipKey(key) {
+            window.testKey = key;
+            await until(() => window.testKey === null, `runner dispatches ${key}`);
+        }
+        chip('Work').focus(); await pressChipKey('Enter');
+        check(d.querySelector('#tag-filter').value === 'tag:work' && d.activeElement === chip('Work'), 'native Enter activates filter and retains focus');
+        await pressChipKey('Space');
+        check(d.querySelector('#tag-filter').value === '' && d.activeElement === chip('Work'), 'native Space clears filter and retains focus');
+        check(chipCopies === 0, 'keyboard chip activation never copies body');
+        chip('Work').click(); chip('日本語').click();
+        check(d.querySelector('#tag-filter').value === 'tag:日本語' && d.querySelectorAll('.text-block').length === 1, 'different Unicode chip replaces active filter');
+        filterBy('#WORK');
+        check(chip('Work').getAttribute('aria-pressed') === 'true' && chip('日本語').getAttribute('aria-pressed') === 'false', 'dropdown changes refresh chip states');
+        filterBy(''); chip('https://example.com/').click();
+        check(d.querySelector('#tag-filter').value === 'tag:https://example.com/' && d.querySelector('.block-title').textContent === 'URL-shaped tag', 'URL-shaped chip selects tag namespace only');
+        filterBy('');
+        const dragChip = chip('Work'); const dragCard = dragChip.closest('.text-block');
+        dragChip.dispatchEvent(new w.PointerEvent('pointerdown', { bubbles: true }));
+        const chipDrag = new w.DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new w.DataTransfer() });
+        dragChip.dispatchEvent(chipDrag);
+        check(!dragCard.draggable && chipDrag.defaultPrevented && !dragCard.classList.contains('dragging'), 'chip pointer press cannot initiate ancestor drag');
+        dragChip.dispatchEvent(new w.PointerEvent('pointerup', { bubbles: true }));
+        check(dragCard.draggable, 'chip pointer release restores ordinary card dragging');
+        check(parseFloat(w.getComputedStyle(dragChip).fontSize) < parseFloat(w.getComputedStyle(dragCard).fontSize) && dragChip.getBoundingClientRect().height >= 28, 'chip is visually smaller with usable click height');
+        frame.style.width = '320px';
+        check([...d.querySelectorAll('.tag-chip')].every(el => el.scrollWidth <= el.clientWidth + 1), 'chips wrap without overflow at 320px');
+        await importJSON(JSON.stringify([{ title: 'Both', text: 'https://example.org/', tags: ['shared'] }, { title: 'Tag only', text: 'Plain', tags: ['SHARED'] }]));
+        filterBy('https://example.org/'); chip('shared').click();
+        check(d.querySelector('#tag-filter').value === 'tag:shared' && d.querySelectorAll('.text-block').length === 2, 'chip switches from URL filter to tag filter');
+        await importJSON(JSON.stringify([{ text: 'Replacement', tags: ['replacement'] }]));
+        check(d.querySelector('#tag-filter').value === '' && chip('replacement').getAttribute('aria-pressed') === 'false', 'import clears missing selected tag and pressed state');
+        chip('replacement').click(); action('Edit'); d.querySelector('#block-tags').value = ''; click('#add-button');
+        check(d.querySelector('#tag-filter').value === '' && !d.querySelector('.tag-chip'), 'editing away final active chip restores All blocks');
         if (new URLSearchParams(location.search).has('forceFailure')) check(false, 'intentional runner failure probe');
         output.dataset.status = 'passed';
         output.textContent = results.join('\n') + `\nALL PASSED (${results.length} assertions)`;

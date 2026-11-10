@@ -110,6 +110,11 @@
             <ul id="detected-links-list" class="link-list" hidden></ul>
             <p id="no-detected-links">No links detected.</p>
         </section>
+        <div class="input-group">
+            <label for="block-tags">Tags:</label>
+            <input type="text" id="block-tags" placeholder="work, urgent" aria-describedby="tags-help">
+            <p id="tags-help">Separate tags with commas. Tags are not included in copied text or QR codes.</p>
+        </div>
         <div class="block-color-selector">
     <label>Block Color:</label>
     <div class="color-dots">
@@ -125,7 +130,7 @@
         <p id="status" role="status" aria-live="polite"></p>
     </div>
     <section class="container blocks-section" aria-label="Saved text blocks">
-        <label for="tag-filter">Filter by hashtag or detected link:</label>
+        <label for="tag-filter">Filter by tag or detected link:</label>
         <select id="tag-filter"><option value="">All blocks</option></select>
         <span id="block-count"></span>
         <p id="empty-state">No blocks to show. Add a text block above.</p>

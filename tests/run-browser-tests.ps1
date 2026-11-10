@@ -69,8 +69,20 @@ try {
         } finally { $cancel.Dispose() }
     }
     do {
-        $evaluation = Invoke-PageCommand 'Runtime.evaluate' @{expression='JSON.stringify({status:document.querySelector("#results")?.dataset.status, html:document.documentElement.outerHTML})'; returnByValue=$true}
+        $evaluation = Invoke-PageCommand 'Runtime.evaluate' @{expression='JSON.stringify({status:document.querySelector("#results")?.dataset.status, html:document.documentElement.outerHTML, key:window.testKey})'; returnByValue=$true}
         $state = $evaluation.result.value | ConvertFrom-Json
+        if ($state.key) {
+            if ($state.key -notin @('Enter', 'Space')) { throw 'Unsupported test key request.' }
+            $keyCode = if ($state.key -eq 'Enter') { 13 } else { 32 }
+            $keyValue = if ($state.key -eq 'Enter') { 'Enter' } else { ' ' }
+            $null = Invoke-PageCommand 'Page.bringToFront' @{}
+            foreach ($keyType in @('keyDown', 'keyUp')) {
+                $keyParams = @{type=$keyType; key=$keyValue; code=$state.key; windowsVirtualKeyCode=$keyCode}
+                if ($keyType -eq 'keyDown') { $keyParams.text = if ($state.key -eq 'Enter') { "`r" } else { ' ' } }
+                $null = Invoke-PageCommand 'Input.dispatchKeyEvent' $keyParams
+            }
+            $null = Invoke-PageCommand 'Runtime.evaluate' @{expression='window.testKey = null'}
+        }
         if ($state.status -in @('passed', 'failed')) { break }
         if ([DateTime]::UtcNow -gt $deadline) { throw "Browser tests timed out. Last page: $($state.html)" }
         Start-Sleep -Milliseconds 100

@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const list = $('#text-blocks');
     const title = $('#block-title');
     const text = $('#new-text');
+    const tagInput = $('#block-tags');
     const add = $('#add-button');
     const filter = $('#tag-filter');
     let blocks = [];
@@ -14,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let dragging = null;
     const openQR = new WeakSet();
     const qrViews = new WeakMap();
+    const chipTargets = new WeakMap();
     const notify = message => { $('#status').textContent = message; };
     function read(key) {
         try { return localStorage.getItem(key); }
@@ -23,18 +25,28 @@ document.addEventListener('DOMContentLoaded', () => {
         try { localStorage.setItem(key, value); return true; }
         catch { notify('Could not save in this browser. Export your blocks before closing.'); return false; }
     }
+    function normalizeTags(values) {
+        const unique = new Map();
+        for (const value of values.flatMap(value => value.split(','))) {
+            const label = value.trim().replace(/^(?:#\s*)+/, '').trim();
+            const key = label.toLowerCase();
+            if (label && !unique.has(key)) unique.set(key, label);
+        }
+        return [...unique.values()];
+    }
     function validate(data) {
         if (!Array.isArray(data) || data.some(b => !b || typeof b.text !== 'string' ||
             (b.title !== undefined && typeof b.title !== 'string') ||
-            (b.color !== undefined && typeof b.color !== 'string'))) throw new Error('Invalid backup');
-        return data.map(b => ({ title: b.title || 'Untitled', text: b.text,
+            (b.color !== undefined && typeof b.color !== 'string') ||
+            (b.tags !== undefined && (!Array.isArray(b.tags) || b.tags.some(tag => typeof tag !== 'string'))))) throw new Error('Invalid backup');
+        return data.map(b => ({ title: b.title || 'Untitled', text: b.text, tags: normalizeTags(b.tags || []),
             color: b.color && CSS.supports('color', b.color) ? b.color : '#f8f8f8' }));
     }
     function save() {
         if (storageBlocked) { notify('Existing saved data could not be read. Export this session or import a valid backup before replacing it.'); return; }
         write('textBlocks', JSON.stringify(blocks));
     }
-    const tags = block => [...new Set((`${block.title} ${block.text}`.match(/#[\p{L}\p{N}_-]+/gu) || []).map(t => t.toLowerCase()))];
+    const tags = block => block.tags.map(tag => tag.toLowerCase());
     function chooseColor(color) {
         selectedColor = color;
         document.querySelectorAll('.color-dot').forEach(dot => {
@@ -43,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     function resetEditor() {
-        editing = null; title.value = ''; text.value = ''; add.textContent = 'Add Text Block';
+        editing = null; title.value = ''; text.value = ''; tagInput.value = ''; add.textContent = 'Add Text Block';
         $('#cancel-edit').hidden = true;
         updateDetectedLinks();
     }
@@ -130,22 +142,29 @@ document.addEventListener('DOMContentLoaded', () => {
         return element;
     }
     function render() {
+        const focusedChip = chipTargets.get(document.activeElement);
+        let restoredChip = null;
         const currentFilter = filter.value;
         const blockLinks = new Map(blocks.map(block => [block, linksIn(block.text)]));
+        const tagLabels = new Map();
+        blocks.forEach(block => block.tags.forEach(tag => {
+            if (!tagLabels.has(tag.toLowerCase())) tagLabels.set(tag.toLowerCase(), tag);
+        }));
         filter.replaceChildren(new Option('All blocks', ''));
-        for (const [label, values] of [
-            ['Hashtags', [...new Set(blocks.flatMap(tags))].sort()],
-            ['Detected links', [...new Set([...blockLinks.values()].flat())].sort()]
+        for (const [label, prefix, values] of [
+            ['Tags', 'tag:', [...tagLabels.keys()].sort()],
+            ['Detected links', 'link:', [...new Set([...blockLinks.values()].flat())].sort()]
         ]) {
             if (!values.length) continue;
             const group = document.createElement('optgroup'); group.label = label;
-            values.forEach(value => group.append(new Option(value, value)));
+            values.forEach(value => group.append(new Option(prefix === 'tag:' ? tagLabels.get(value) : value, prefix + value)));
             filter.append(group);
         }
         filter.value = [...filter.options].some(o => o.value === currentFilter) ? currentFilter : '';
         list.replaceChildren();
         blocks.forEach((block, index) => {
-            if (filter.value && !tags(block).includes(filter.value) && !blockLinks.get(block).includes(filter.value)) return;
+            if (filter.value.startsWith('tag:') && !tags(block).includes(filter.value.slice(4))) return;
+            if (filter.value.startsWith('link:') && !blockLinks.get(block).includes(filter.value.slice(5))) return;
             const card = document.createElement('article'); card.className = 'text-block';
             card.style.backgroundColor = block.color; card.draggable = !filter.value;
             card.dataset.index = index;
@@ -154,6 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const actions = document.createElement('div'); actions.className = 'block-actions';
             actions.append(button('Copy', () => copy(block.text)), button('Edit', () => {
                 editing = block; title.value = block.title; text.value = block.text; chooseColor(block.color);
+                tagInput.value = block.tags.join(', ');
                 updateDetectedLinks();
                 add.textContent = 'Save Changes'; $('#cancel-edit').hidden = false; title.focus();
             }), button('Delete', () => {
@@ -170,6 +190,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 actions.append(move);
             }
             card.append(heading, content);
+            if (block.tags.length) {
+                const chips = document.createElement('ul'); chips.className = 'block-tags';
+                chips.setAttribute('aria-label', 'Tags');
+                block.tags.forEach(tag => {
+                    const item = document.createElement('li');
+                    const key = tag.toLowerCase();
+                    const value = 'tag:' + key;
+                    const chip = button(tag, () => {
+                        chip.focus({ preventScroll: true });
+                        filter.value = filter.value === value ? '' : value;
+                        render();
+                    });
+                    chip.className = 'tag-chip'; chip.draggable = false;
+                    chip.setAttribute('aria-label', `Filter by tag ${tag}`);
+                    chip.setAttribute('aria-pressed', String(filter.value === value));
+                    chipTargets.set(chip, { block, key });
+                    chip.addEventListener('dragstart', event => { event.preventDefault(); event.stopPropagation(); });
+                    if (focusedChip?.block === block && focusedChip.key === key) restoredChip = chip;
+                    item.append(chip); chips.append(item);
+                });
+                card.append(chips);
+            }
             const urls = blockLinks.get(block);
             if (urls.length) {
                 const links = document.createElement('div'); links.className = 'block-links';
@@ -192,7 +234,15 @@ document.addEventListener('DOMContentLoaded', () => {
             actions.append(qrButton);
             if (openQR.has(block)) card.append(qrView(block));
             card.addEventListener('click', () => copy(block.text));
+            // A draggable ancestor must not turn a chip press into a card drag.
+            card.addEventListener('pointerdown', event => {
+                card.draggable = !filter.value && !event.target.closest('.tag-chip');
+            });
+            for (const eventName of ['pointerup', 'pointercancel']) {
+                card.addEventListener(eventName, () => { card.draggable = !filter.value; });
+            }
             card.addEventListener('dragstart', event => {
+                if (!card.draggable) { event.preventDefault(); return; }
                 dragging = block; card.classList.add('dragging'); event.dataTransfer.setData('text/plain', String(index));
             });
             card.addEventListener('dragend', () => { dragging = null; card.classList.remove('dragging'); });
@@ -207,10 +257,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         $('#empty-state').hidden = list.children.length > 0;
         $('#block-count').textContent = `${list.children.length} of ${blocks.length} blocks`;
+        if (focusedChip) (restoredChip || filter).focus({ preventScroll: true });
     }
     add.addEventListener('click', () => {
         if (!text.value.trim()) { notify('Enter some text first.'); text.focus(); return; }
-        const value = { title: title.value.trim() || 'Untitled', text: text.value, color: selectedColor };
+        const value = { title: title.value.trim() || 'Untitled', text: text.value, tags: normalizeTags([tagInput.value]), color: selectedColor };
         if (editing) Object.assign(editing, value); else blocks.push(value);
         resetEditor(); save(); render();
     });
@@ -260,7 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const imported = validate(JSON.parse(await file.text()));
             if ((blocks.length || storageBlocked) && !confirm('Replace all blocks with this backup? Export first to keep your current blocks.')) return;
             blocks = imported; storageBlocked = false; resetEditor(); save(); render();
-        } catch { notify('Invalid backup. Choose a JSON array of blocks with text, optional title and color. Current blocks were kept.'); }
+        } catch { notify('Invalid backup. Blocks need text, optional title and color, and optional tags as an array of strings. Current blocks were kept.'); }
         finally { event.target.value = ''; }
     });
     $('#clear-button').addEventListener('click', () => {
