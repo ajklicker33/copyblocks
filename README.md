@@ -13,7 +13,7 @@ A local-first text clipboard. Open `index.html` in a browser; no build or extern
 - Dedicated comma-separated Tags field, separate tag chips and case-insensitive filtering from tag metadata, including Unicode labels. Tags are excluded from copied text and QR codes. Options refresh after edits and imports. Reordering is disabled while filtered to avoid ambiguous ordering.
 - Long strings wrap inside responsive cards. Saved blocks have their own section.
 - Keyboard-accessible controls and visible clipboard/storage error feedback.
-- Live Detected links lists beneath the editor and saved-block text show HTTP(S) URLs without an action prefix; card clicks still copy the exact body. The filter groups tags and detected URLs.
+- Live Detected links lists beneath the editor and saved-block text show HTTP(S) URLs without an action prefix; card clicks still copy the exact body. Filtering uses a compact frequent-tag strip with counts and collapsible More tags; detected URLs are not filter options.
 
 ## Regression fixed
 
@@ -32,12 +32,12 @@ Commit `a24a0ae` replaced the application with unused class scaffolding, removin
 | P1 | Block action placement | Planned in Step 14: evenly spaced top Copy/Edit/Delete controls and bottom code controls. Step 16 replaces movement buttons with drag-and-drop. |
 | P1 | Drag destination preview | Planned in Step 16: drag-and-drop replaces Move up/down, with an empty dotted insertion placeholder and keyboard/touch support. |
 | P2 | Words/icons toggle | Planned in Step 15: a top-of-page preference switches block action labels between words and accessible icons. |
-| P1 | Popular tag filters | Step 17 replaces the dropdown with four most-used tag buttons/counts; detected links cease to be filterable. |
+| P1 | Popular tag filters | Implemented in Step 17: responsive frequent-tag buttons/counts, collapsible searchable overflow and a visible active tag; detected links are not filterable. |
 | P1 | Color reuse shortcut | Step 18 makes note HEX labels fill the note picker without entering edit mode. |
 | P1 | Compact interface | Step 14 now includes a smaller page/block title area and adjacent responsive control groups. |
 | P2 | Backup interface | Step 19 groups import/export with clear validation, preview counts and explicit replacement confirmation. |
 | P1 | Wrapping / separate blocks div | Implemented responsive wrapping and a separate saved-blocks section. |
-| P2 | Detect links | Implemented in Step 2: detected-link lists, live editor preview and URL filtering preserve card-click copying. |
+| P2 | Detect links | Detected-link lists and live editor preview preserve card-click copying. Step 17 removed URL filtering. |
 | P2 | Barcode / QR | QR implemented in Step 3 with a bundled encoder and independent decode tests. Linear barcodes remain deferred pending scanner/symbology requirements. Veto case normalization: exact text is preserved. |
 | P2 | Matching link and QR numbers | Planned in Step 9: numbered detected links and matching per-link QR codes, with the full-text QR clearly separate. |
 | P1 | Per-note creation options | Planned in Step 11: saved Generate QR and Detect links checkboxes; enabled QR is shown alongside text by default. Step 12 adds the working Generate barcode checkbox. |
@@ -52,7 +52,7 @@ In an editor that provides it, right-click `index.html` and choose **Open in Int
 
 ## Executable implementation plan
 
-To start a task, prompt **"Begin work on Step X in README.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7, 8, 10 and 13 are **Complete**; Steps 4–6, 9, 11–12 and 14–19 are **Not started**. Recommended order: **17 → 18 → 14 → 19 → 16 → 15 → 11 → 9 → 12 → 4**: simplify filtering, add color reuse, compact the interface and improve backups before the larger interaction changes. Steps 5–6 remain lower-priority optional work. The earlier regression fix and working features above are already implemented.
+To start a task, prompt **"Begin work on Step X in README.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7, 8, 10, 13 and 17 are **Complete**; Steps 4–6, 9, 11–12, 14–16 and 18–19 are **Not started**. Recommended order: **18 → 14 → 19 → 16 → 15 → 11 → 9 → 12 → 4**: simplify filtering, add color reuse, compact the interface and improve backups before the larger interaction changes. Steps 5–6 remain lower-priority optional work. The earlier regression fix and working features above are already implemented.
 
 ### Instructions for the implementing agent
 
@@ -262,17 +262,21 @@ Accessibility and touch: use a focusable drag handle with an accessible name and
 
 Acceptance: exercise real pointer dragging plus keyboard and touch paths, including movement in both directions, across rows, to first/last positions, past unequal-height blocks and during edge scrolling. Verify the dotted placeholder predicts the final position exactly. Reload/export must reflect only committed drops; cancellations and invalid drops leave the saved order unchanged. Test filtered/editing restrictions, deleted/imported collections, interruption cleanup, native keyboard focus, 320px layouts, no accidental copying and preservation of tag/link/QR behavior. Remove the old Move up/down controls and their obsolete tests only once these replacement interactions are verified; document any physical-device checks that remain manual.
 
-### Step 17 — Four most-used tags with live counts
+### Step 17 — Compact popular tags with live counts
 
-**Status:** Not started. **Priority:** P1. **Dependencies:** Steps 7–8. Recommended next.
+**Status:** Complete (2026-11-11). **Priority:** P1. **Dependencies:** Steps 7–8.
 
-Scope: replace the filter dropdown with up to four clickable tag buttons showing each label and quantity, for example `Work (12)`. Count notes containing each case-insensitive tag once per note, across the entire collection rather than the filtered subset. Sort by count descending, then normalized label ascending for deterministic ties; retain a consistent display spelling. Recompute after save, tag edit, delete, clear and import without reload. Unsaved editor drafts do not change collection counts.
+Scope: replace the filter dropdown with a responsive shortlist of clickable tag buttons showing each label and quantity, for example `Work (12)`. Count notes containing each case-insensitive tag once per note, across the entire collection rather than the filtered subset. Sort by count descending, then normalized label ascending for deterministic ties; retain a consistent display spelling. Recompute after save, tag edit, delete, clear and import without reload. Unsaved editor drafts do not change collection counts.
 
-Clicking a tag filters matching notes; clicking it again clears the filter. Keep an explicit All blocks/reset control and the existing per-note chip toggles so less-common tags remain usable. If an active tag is outside the top four, show its active filter and count separately with a clear action, without displacing or increasing the four most-used suggestions. Reset only when the selected tag no longer exists. Preserve the editing exception and distinct match count from Step 13. Announce count/filter changes accessibly without stealing focus.
+Clicking a tag filters matching notes; clicking it again clears the filter. Keep an explicit All/reset control and the existing per-note chip toggles. Show up to three frequent tags at widths of 640px or less, and five above that. Put the rest in a collapsed More tags panel with a search field; search can also find popular tags. If an active tag is outside the shortlist, show its pressed chip and count separately, so it remains visible when the panel is closed. Reset only when the selected tag no longer exists. Preserve the editing exception and distinct match count from Step 13. Announce count/filter changes accessibly without stealing focus.
 
 Remove detected URLs from filter choices and matching logic entirely. Links remain displayed, clickable and available for their planned QR views; their bodies/payloads do not change. This supersedes dropdown/link-filter requirements in completed Steps 2, 7 and 8 and any earlier planned URL-filter checks. Do not rewrite historical completion reports; update current UI documentation/tests when implementing.
 
-Acceptance: test zero through many tags, deterministic ties, casing variants, deduplication, live count/rank changes after mutations, active tags falling out of the top four, less-common chip selection, tag removal, edits/imports and 320px layout. Counts must not shrink when a filter activates. No URL filter remains, while link opening, copying, editing highlights and QR behavior still pass their checks.
+Acceptance: test zero through many tags, deterministic ties, casing variants, deduplication, live count/rank changes after mutations, active tags falling out of the responsive shortlist, less-common chip selection, tag removal, edits/imports and 320px layout. Counts must not shrink when a filter activates. No URL filter remains, while link opening, copying, editing highlights and QR behavior still pass their checks.
+
+Implementation: a compact All/count button and muted frequent-tag chips replace the select menu. The strip shows three suggestions on narrow screens and five on wider screens. Additional tags live inside native More tags disclosure; its search supports case-insensitive Unicode matching and reports an empty result. A selected overflow tag remains separately visible. Counts use the entire saved collection and update after add/edit/delete/import/clear, not unsaved drafts. Responsive changes and native keyboard activation preserve relevant focus; a polite live result count announces filtering outcomes. No URL filtering remains, but detected links and QR views still work.
+
+Validation: all 221 browser assertions and real downloaded JSON verification passed. Updated obsolete dropdown/link-filter checks and added ranking/tie/deduplication tests, global counts under filtering, collapsed overflow, search, responsive limits, active-filter retention, live mutation counts, draft isolation, native Enter/Space, 320px fit and zero-tag/clear cases. Existing edit exceptions, inline Editing-save validation, copy behavior, QR decoding and persistence checks also pass.
 
 ### Step 18 — Reuse a note color by clicking its HEX label
 

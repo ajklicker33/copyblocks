@@ -109,9 +109,20 @@
         <p id="status" role="status" aria-live="polite"></p>
     </div>
     <section class="container blocks-section" aria-label="Saved text blocks">
-        <label for="tag-filter">Filter by tag or detected link:</label>
-        <select id="tag-filter"><option value="">All blocks</option></select>
-        <span id="block-count"></span>
+        <div id="tag-filter" class="tag-filter" role="group" aria-label="Filter notes by tag">
+            <div class="tag-filter-row">
+                <button id="all-tags" type="button" aria-pressed="true">All</button>
+                <span id="popular-tags" class="filter-tags"></span>
+                <span id="active-tag" class="filter-tags" aria-label="Active tag"></span>
+            </div>
+            <details id="more-tags" hidden>
+                <summary id="more-tags-label">More tags</summary>
+                <input id="tag-search" type="search" placeholder="Find a tag" aria-label="Find a tag">
+                <div id="more-tag-list" class="filter-tags"></div>
+                <p id="tag-search-empty" hidden>No matching tags.</p>
+            </details>
+        </div>
+        <span id="block-count" role="status" aria-live="polite" aria-atomic="true"></span>
         <p id="empty-state">No blocks to show. Add a text block above.</p>
         <div id="text-blocks"></div>
     </section>

@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 const frame = document.querySelector('iframe');
 const output = document.querySelector('#results');
 const results = [];
@@ -33,9 +33,13 @@ async function reload() {
     });
 }
 function filterBy(value) {
-    const filter = d.querySelector('#tag-filter');
-    filter.value = value ? (value.startsWith('#') ? 'tag:' + value.slice(1).toLowerCase() : 'link:' + value) : '';
-    filter.dispatchEvent(new w.Event('change'));
+    const wanted = value ? 'tag:' + value.replace(/^#/, '').toLowerCase() : '';
+    if (!wanted) { click('#all-tags'); return; }
+    if (d.querySelector('#tag-filter').dataset.activeTag === wanted) return;
+    const target = [...d.querySelectorAll('[data-tag-filter]')].find(el => el.dataset.tagFilter === wanted);
+    if (!target) throw new Error('Tag not found: ' + value);
+    if (target.closest('details')) d.querySelector('#more-tags').open = true;
+    target.click();
 }
 async function importJSON(value) {
     const input = d.querySelector('#file-input');
@@ -180,16 +184,12 @@ frame.onload = async () => {
             { title: 'Other link', text: 'https://example.org/b' },
             { title: 'Plain #work', text: 'No link', tags: ['work'] }
         ]));
-        check(d.querySelectorAll('#tag-filter optgroup[label="Detected links"] option').length === 2, 'filter contains distinct detected links');
-        filterBy('https://example.com/a');
-        check(d.querySelectorAll('.text-block').length === 1 && d.querySelector('.block-title').textContent === 'Linked #work', 'URL filter shows matching blocks only');
-        check(!d.querySelector('.text-block').draggable, 'link filtering disables ambiguous reordering');
+        check(!d.querySelector('select#tag-filter') && ![...d.querySelectorAll('[data-tag-filter]')].some(el => el.dataset.tagFilter.startsWith('link:')), 'dropdown and detected-link filters are removed');
+        filterBy('#work'); check(d.querySelectorAll('.text-block').length === 2, 'tag filters remain independent of detected links');
         action('Edit'); editor.value = 'https://example.net/replaced'; click('#add-button');
-        check(d.querySelector('#tag-filter').value === '' && d.querySelectorAll('.text-block').length === 3, 'removed URL filter resets to All blocks');
-        check(![...d.querySelector('#tag-filter').options].some(option => option.value === 'link:https://example.com/a'), 'filter removes stale edited links');
-        filterBy('#work'); check(d.querySelectorAll('.text-block').length === 2, 'tag filtering remains available alongside link filtering');
+        check(d.querySelector('#tag-filter').dataset.activeTag === 'tag:work' && d.querySelectorAll('.text-block').length === 2, 'editing URLs preserves tag selection');
         await importJSON(JSON.stringify([{ text: 'https://example.org/new-import' }]));
-        check(d.querySelectorAll('#tag-filter optgroup[label="Detected links"] option').length === 1 && d.querySelector('#tag-filter').value === '', 'import refreshes combined filter and resets missing selection');
+        check(!d.querySelector('[data-tag-filter]') && d.querySelector('#tag-filter').dataset.activeTag === '', 'link-only import creates no tag suggestions');
         // jsQR is a separate, test-only decoder. Decode pixels from the actual UI canvas.
         const decodeQR = () => {
             const canvas = d.querySelector('.qr-code');
@@ -269,11 +269,11 @@ frame.onload = async () => {
         check(stored()[0].text === 'Hello' && stored()[0].tags.join() === 'changed', 'editing tags leaves body unchanged');
         filterBy('#CHANGED');
         action('Edit'); d.querySelector('#block-tags').value = ''; click('#add-button');
-        check(stored()[0].tags.length === 0 && !d.querySelector('.tag-chip') && d.querySelector('#tag-filter').value === '', 'removing final tag clears chips and stale filter');
+        check(stored()[0].tags.length === 0 && !d.querySelector('.tag-chip') && d.querySelector('#tag-filter').dataset.activeTag === '', 'removing final tag clears chips and stale filter');
         const legacyBody = '  Literal #example 🍒\nhttps://example.com/#fragment  ';
         await importJSON(JSON.stringify([{ title: '#TitleTag', text: legacyBody }]));
         check(stored()[0].text === legacyBody && stored()[0].title === '#TitleTag' && stored()[0].tags.length === 0, 'legacy import defaults tags without changing text or title');
-        check(!d.querySelector('#tag-filter optgroup[label="Tags"]'), 'body/title hashtags and URL fragments do not create metadata tags');
+        check(!d.querySelector('[data-tag-filter]'), 'body/title hashtags and URL fragments do not create metadata tags');
         // Verify old browser storage follows the same migration without rewriting it on load.
         const legacyStored = JSON.stringify([{ title: '#TitleTag', text: legacyBody }]);
         w.localStorage.setItem('textBlocks', legacyStored); await reload();
@@ -295,8 +295,7 @@ frame.onload = async () => {
         filterBy('#WORK'); check(d.querySelectorAll('.text-block').length === 2, 'case-insensitive tag filter matches casing variants');
         filterBy('#https://example.com/');
         check(d.querySelectorAll('.text-block').length === 1 && d.querySelector('.block-title').textContent === 'URL-shaped tag', 'URL-shaped tag cannot collide with link filter');
-        filterBy('https://example.com/');
-        check(d.querySelectorAll('.text-block').length === 1 && d.querySelector('.block-title').textContent === 'Actual link', 'link filter does not match URL-shaped tag metadata');
+        check(![...d.querySelectorAll('[data-tag-filter]')].some(el => el.dataset.tagFilter.startsWith('link:')), 'URL-shaped metadata does not restore detected URL filtering');
         filterBy('');
         const tagBackup = JSON.stringify(stored());
         await importJSON(tagBackup);
@@ -305,12 +304,12 @@ frame.onload = async () => {
         let chipCopies = 0;
         Object.defineProperty(w.navigator, 'clipboard', { configurable: true, value: { writeText: async () => { chipCopies++; } } });
         chip('Work').click();
-        check(d.querySelector('#tag-filter').value === 'tag:work' && d.querySelectorAll('.text-block').length === 2, 'chip activates matching tag filter');
+        check(d.querySelector('#tag-filter').dataset.activeTag === 'tag:work' && d.querySelectorAll('.text-block').length === 2, 'chip activates matching tag filter');
         check([...d.querySelectorAll('.tag-chip')].filter(el => el.textContent.toLowerCase() === 'work').every(el => el.getAttribute('aria-pressed') === 'true'), 'all matching chip pressed states are synchronized');
         check(d.activeElement === chip('Work'), 'chip focus survives filtered render');
         check(w.getComputedStyle(chip('Work'), '::before').content.includes('✓'), 'selected chip has a non-color checkmark indicator');
         chip('work').click();
-        check(d.querySelector('#tag-filter').value === '' && d.querySelectorAll('.text-block').length === 4, 'repeat chip click clears filter');
+        check(d.querySelector('#tag-filter').dataset.activeTag === '' && d.querySelectorAll('.text-block').length === 4, 'repeat chip click clears filter');
         check(chipCopies === 0, 'chip clicks never copy body');
         // Browser protocol input invokes native button behavior, not synthetic key listeners.
         async function pressChipKey(key) {
@@ -318,16 +317,16 @@ frame.onload = async () => {
             await until(() => window.testKey === null, `runner dispatches ${key}`);
         }
         chip('Work').focus(); await pressChipKey('Enter');
-        check(d.querySelector('#tag-filter').value === 'tag:work' && d.activeElement === chip('Work'), 'native Enter activates filter and retains focus');
+        check(d.querySelector('#tag-filter').dataset.activeTag === 'tag:work' && d.activeElement === chip('Work'), 'native Enter activates filter and retains focus');
         await pressChipKey('Space');
-        check(d.querySelector('#tag-filter').value === '' && d.activeElement === chip('Work'), 'native Space clears filter and retains focus');
+        check(d.querySelector('#tag-filter').dataset.activeTag === '' && d.activeElement === chip('Work'), 'native Space clears filter and retains focus');
         check(chipCopies === 0, 'keyboard chip activation never copies body');
         chip('Work').click(); chip('日本語').click();
-        check(d.querySelector('#tag-filter').value === 'tag:日本語' && d.querySelectorAll('.text-block').length === 1, 'different Unicode chip replaces active filter');
+        check(d.querySelector('#tag-filter').dataset.activeTag === 'tag:日本語' && d.querySelectorAll('.text-block').length === 1, 'different Unicode chip replaces active filter');
         filterBy('#WORK');
-        check(chip('Work').getAttribute('aria-pressed') === 'true' && chip('日本語').getAttribute('aria-pressed') === 'false', 'dropdown changes refresh chip states');
+        check(chip('Work').getAttribute('aria-pressed') === 'true' && chip('日本語').getAttribute('aria-pressed') === 'false', 'filter strip changes refresh chip states');
         filterBy(''); chip('https://example.com/').click();
-        check(d.querySelector('#tag-filter').value === 'tag:https://example.com/' && d.querySelector('.block-title').textContent === 'URL-shaped tag', 'URL-shaped chip selects tag namespace only');
+        check(d.querySelector('#tag-filter').dataset.activeTag === 'tag:https://example.com/' && d.querySelector('.block-title').textContent === 'URL-shaped tag', 'URL-shaped chip selects tag namespace only');
         filterBy('');
         const dragChip = chip('Work'); const dragCard = dragChip.closest('.text-block');
         dragChip.dispatchEvent(new w.PointerEvent('pointerdown', { bubbles: true }));
@@ -340,12 +339,12 @@ frame.onload = async () => {
         frame.style.width = '320px';
         check([...d.querySelectorAll('.tag-chip')].every(el => el.scrollWidth <= el.clientWidth + 1), 'chips wrap without overflow at 320px');
         await importJSON(JSON.stringify([{ title: 'Both', text: 'https://example.org/', tags: ['shared'] }, { title: 'Tag only', text: 'Plain', tags: ['SHARED'] }]));
-        filterBy('https://example.org/'); chip('shared').click();
-        check(d.querySelector('#tag-filter').value === 'tag:shared' && d.querySelectorAll('.text-block').length === 2, 'chip switches from URL filter to tag filter');
+        chip('shared').click();
+        check(d.querySelector('#tag-filter').dataset.activeTag === 'tag:shared' && d.querySelectorAll('.text-block').length === 2, 'chip selects shared tag across notes with and without URLs');
         await importJSON(JSON.stringify([{ text: 'Replacement', tags: ['replacement'] }]));
-        check(d.querySelector('#tag-filter').value === '' && chip('replacement').getAttribute('aria-pressed') === 'false', 'import clears missing selected tag and pressed state');
+        check(d.querySelector('#tag-filter').dataset.activeTag === '' && chip('replacement').getAttribute('aria-pressed') === 'false', 'import clears missing selected tag and pressed state');
         chip('replacement').click(); action('Edit'); d.querySelector('#block-tags').value = ''; click('#add-button');
-        check(d.querySelector('#tag-filter').value === '' && !d.querySelector('.tag-chip'), 'editing away final active chip restores All blocks');
+        check(d.querySelector('#tag-filter').dataset.activeTag === '' && !d.querySelector('.tag-chip'), 'editing away final active chip restores All blocks');
         const setColorField = (selector, value) => {
             const field = d.querySelector(selector); field.value = value;
             field.dispatchEvent(new w.Event('input', { bubbles: true }));
@@ -489,6 +488,58 @@ frame.onload = async () => {
         check(!d.querySelector('.is-editing') && badgeCopies === 0, 'Editing save exits edit state without copying');
         action('Edit'); d.querySelector('#new-text').value = 'Mouse save'; click('.editing-badge');
         check(stored()[0].text === 'Mouse save' && !d.querySelector('.is-editing') && badgeCopies === 0, 'clicking Editing saves without copying');
+        const manyTags = [
+            { title: 'One', text: 'one', tags: ['Alpha', 'alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', '日本語'] },
+            { title: 'Two', text: 'two', tags: ['ALPHA', 'Beta', 'Gamma'] },
+            { title: 'Three', text: 'three', tags: ['alpha', 'Beta'] },
+            { title: 'Four', text: 'four', tags: ['alpha'] }
+        ];
+        frame.style.width = '1200px';
+        await importJSON(JSON.stringify(manyTags));
+        await until(() => d.querySelectorAll('#popular-tags button').length === 5, 'wide-screen suggestions');
+        const suggestionKeys = () => [...d.querySelectorAll('#popular-tags [data-tag-filter]')].map(el => el.dataset.tagFilter);
+        const tagCount = key => [...d.querySelectorAll('[data-tag-filter]')].find(el => el.dataset.tagFilter === 'tag:' + key)?.querySelector('.tag-count').textContent;
+        check(suggestionKeys().join() === 'tag:alpha,tag:beta,tag:gamma,tag:delta,tag:epsilon', 'wide strip ranks five frequent tags with deterministic ties');
+        check(tagCount('alpha') === '4' && tagCount('beta') === '3', 'counts deduplicate casing variants once per note');
+        check(!d.querySelector('#more-tags').open && !d.querySelector('#more-tags').hidden, 'overflow tags are collapsed by default');
+        filterBy('#gamma');
+        check(tagCount('alpha') === '4' && tagCount('beta') === '3' && d.querySelectorAll('.text-block').length === 2, 'filtering does not shrink global tag counts');
+        filterBy('#zeta');
+        check(d.querySelector('#active-tag [data-tag-filter]').dataset.tagFilter === 'tag:zeta', 'selected overflow tag stays visible outside suggestions');
+        d.querySelector('#more-tags').open = false;
+        check(d.querySelector('#active-tag button').getAttribute('aria-pressed') === 'true', 'collapsing overflow keeps active filter visible');
+        d.querySelector('#active-tag button').click();
+        check(d.querySelector('#tag-filter').dataset.activeTag === '' && d.querySelectorAll('.text-block').length === 4, 'active overflow chip toggles filter off');
+        d.querySelector('#more-tags').open = true;
+        const searchTags = value => {
+            const field = d.querySelector('#tag-search'); field.focus(); field.value = value; field.dispatchEvent(new w.Event('input'));
+        };
+        searchTags('日本');
+        check(d.querySelectorAll('#more-tag-list button').length === 1 && d.querySelector('#more-tag-list button').dataset.tagFilter === 'tag:日本語' && d.activeElement === d.querySelector('#tag-search'), 'expanded search supports Unicode and preserves typing focus');
+        searchTags('missing'); check(!d.querySelector('#tag-search-empty').hidden, 'tag search reports no matches');
+        searchTags('ALPHA'); check(d.querySelector('#more-tag-list button').dataset.tagFilter === 'tag:alpha', 'search finds popular tags case-insensitively');
+        searchTags('');
+        filterBy('#zeta');
+        add('Five', 'extra', 'Zeta');
+        check(tagCount('zeta') === '2' && suggestionKeys().includes('tag:zeta') && d.querySelector('#tag-filter').dataset.activeTag === 'tag:zeta', 'saving tags updates rank and count without clearing selection');
+        const countBeforeDraft = tagCount('zeta'); d.querySelector('#block-tags').value = 'zeta, draft-only';
+        check(tagCount('zeta') === countBeforeDraft && !tagCount('draft-only'), 'unsaved drafts do not affect tag statistics');
+        frame.style.width = '320px';
+        await until(() => d.querySelectorAll('#popular-tags button').length === 3, 'compact suggestions');
+        check(d.querySelector('#active-tag button')?.dataset.tagFilter === 'tag:zeta', 'active tag remains visible when responsive limit shrinks');
+        check(d.documentElement.scrollWidth <= w.innerWidth, 'collapsible tag strip fits 320px');
+        filterBy('');
+        const popular = d.querySelector('#popular-tags button'); popular.focus(); await pressChipKey('Enter');
+        check(d.querySelector('#tag-filter').dataset.activeTag === 'tag:alpha' && d.activeElement.dataset.tagFilter === 'tag:alpha', 'native keyboard selection preserves strip focus');
+        await pressChipKey('Space'); check(d.querySelector('#tag-filter').dataset.activeTag === '', 'native Space clears strip selection');
+        filterBy('#zeta'); cardAction('Five', 'Delete');
+        check(tagCount('zeta') === '1' && d.querySelector('#active-tag button')?.dataset.tagFilter === 'tag:zeta', 'delete updates counts while retaining a lower-ranked active tag');
+        action('Edit'); d.querySelector('#block-tags').value = 'alpha'; click('#add-button');
+        check(!tagCount('zeta') && d.querySelector('#tag-filter').dataset.activeTag === '', 'removing final selected tag clears selection and suggestions');
+        await importJSON(JSON.stringify([{ text: 'https://example.org/', tags: [] }]));
+        check(!d.querySelector('[data-tag-filter]') && d.querySelector('#more-tags').hidden && !!d.querySelector('.block-links a'), 'zero tags hide tag clutter while keeping detected links usable');
+        click('#clear-button');
+        check(d.querySelector('#all-tags').textContent === 'All (0)' && !d.querySelector('[data-tag-filter]'), 'clearing notes resets all tag quantities');
         if (new URLSearchParams(location.search).has('forceFailure')) check(false, 'intentional runner failure probe');
         output.dataset.status = 'passed';
         output.textContent = results.join('\n') + `\nALL PASSED (${results.length} assertions)`;

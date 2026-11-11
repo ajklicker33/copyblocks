@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 document.addEventListener('DOMContentLoaded', () => {
     const $ = selector => document.querySelector(selector);
@@ -8,6 +8,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const tagInput = $('#block-tags');
     const add = $('#add-button');
     const filter = $('#tag-filter');
+    let activeFilter = '';
+    const compactFilters = window.matchMedia('(max-width: 640px)');
     let blocks = [];
     let editing = null;
     let selectedColor = '#F8F8F8';
@@ -174,28 +176,66 @@ document.addEventListener('DOMContentLoaded', () => {
         qrViews.set(block, { text: block.text, title: block.title, element });
         return element;
     }
+    function renderTagFilters() {
+        const focusedKey = document.activeElement.dataset?.tagFilter;
+        const counts = new Map();
+        blocks.forEach(block => block.tags.forEach(label => {
+            const key = label.toLowerCase();
+            if (!counts.has(key)) counts.set(key, { key, label, count: 0 });
+            counts.get(key).count++;
+        }));
+        const ordered = [...counts.values()].sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+        if (activeFilter && !counts.has(activeFilter.slice(4))) activeFilter = '';
+        filter.dataset.activeTag = activeFilter;
+        const limit = compactFilters.matches ? 3 : 5;
+        const top = ordered.slice(0, limit);
+        const remainder = ordered.slice(limit);
+        function tagButton(tag) {
+            const value = 'tag:' + tag.key;
+            const control = button('', () => {
+                control.focus({ preventScroll: true });
+                activeFilter = activeFilter === value ? '' : value;
+                render();
+            });
+            control.className = 'filter-tag'; control.dataset.tagFilter = value;
+            control.title = `${tag.label} (${tag.count})`;
+            control.setAttribute('aria-pressed', String(activeFilter === value));
+            control.setAttribute('aria-label', `${tag.label}, ${tag.count} ${tag.count === 1 ? 'note' : 'notes'}`);
+            const label = document.createElement('span'); label.className = 'filter-tag-label'; label.textContent = tag.label;
+            const count = document.createElement('span'); count.className = 'tag-count'; count.textContent = tag.count;
+            control.append(label, count);
+            return control;
+        }
+        $('#popular-tags').replaceChildren(...top.map(tagButton));
+        const extra = counts.get(activeFilter.slice(4));
+        $('#active-tag').replaceChildren(...(extra && !top.includes(extra) ? [tagButton(extra)] : []));
+        $('#all-tags').setAttribute('aria-pressed', String(!activeFilter));
+        $('#all-tags').textContent = `All (${blocks.length})`;
+        const details = $('#more-tags');
+        details.hidden = !remainder.length;
+        if (details.hidden) {
+            if (details.contains(document.activeElement)) $('#all-tags').focus({ preventScroll: true });
+            details.open = false;
+        }
+        $('#more-tags-label').textContent = `More tags (${remainder.length})`;
+        const search = $('#tag-search');
+        if (details.hidden) search.value = '';
+        const query = search.value.trim().toLowerCase();
+        const visible = (query ? ordered : remainder).filter(tag => tag.key.includes(query));
+        $('#more-tag-list').replaceChildren(...visible.map(tagButton));
+        $('#tag-search-empty').hidden = !!visible.length;
+        if (focusedKey !== undefined) {
+            const replacement = [...filter.querySelectorAll('[data-tag-filter]')].find(control =>
+                control.dataset.tagFilter === focusedKey && (!control.closest('details') || details.open));
+            (replacement || $('#all-tags')).focus({ preventScroll: true });
+        }
+    }
     function render() {
         const focusedChip = chipTargets.get(document.activeElement);
         let restoredChip = null;
-        const currentFilter = filter.value;
         const blockLinks = new Map(blocks.map(block => [block, linksIn(block.text)]));
-        const tagLabels = new Map();
-        blocks.forEach(block => block.tags.forEach(tag => {
-            if (!tagLabels.has(tag.toLowerCase())) tagLabels.set(tag.toLowerCase(), tag);
-        }));
-        filter.replaceChildren(new Option('All blocks', ''));
-        for (const [label, prefix, values] of [
-            ['Tags', 'tag:', [...tagLabels.keys()].sort()],
-            ['Detected links', 'link:', [...new Set([...blockLinks.values()].flat())].sort()]
-        ]) {
-            if (!values.length) continue;
-            const group = document.createElement('optgroup'); group.label = label;
-            values.forEach(value => group.append(new Option(prefix === 'tag:' ? tagLabels.get(value) : value, prefix + value)));
-            filter.append(group);
-        }
-        filter.value = [...filter.options].some(o => o.value === currentFilter) ? currentFilter : '';
-        const matchesFilter = block => (!filter.value.startsWith('tag:') || tags(block).includes(filter.value.slice(4))) &&
-            (!filter.value.startsWith('link:') || blockLinks.get(block).includes(filter.value.slice(5)));
+        renderTagFilters();
+        const matchesFilter = block => !activeFilter || tags(block).includes(activeFilter.slice(4));
         const matchingCount = blocks.filter(matchesFilter).length;
         const editingException = editing && !matchesFilter(editing);
         const displayBlocks = blocks.map((block, index) => ({ block, index }));
@@ -205,7 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
         displayBlocks.forEach(({ block, index }) => {
             if (block !== editing && !matchesFilter(block)) return;
             const card = document.createElement('article'); card.className = 'text-block';
-            card.style.backgroundColor = block.color; card.draggable = !filter.value && !editing;
+            card.style.backgroundColor = block.color; card.draggable = !activeFilter && !editing;
             card.style.color = foregroundFor(block.color);
             card.dataset.index = index;
             if (block === editing) {
@@ -238,11 +278,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }));
             for (const [label, offset] of [['Move up', -1], ['Move down', 1]]) {
                 const move = button(label, () => {
-                    if (editing || filter.value) return;
+                    if (editing || activeFilter) return;
                     [blocks[index], blocks[index + offset]] = [blocks[index + offset], blocks[index]];
                     save(); render();
                 });
-                move.disabled = !!editing || !!filter.value || index + offset < 0 || index + offset >= blocks.length;
+                move.disabled = !!editing || !!activeFilter || index + offset < 0 || index + offset >= blocks.length;
                 if (editing) move.title = 'Finish editing before reordering blocks.';
                 actions.append(move);
             }
@@ -259,12 +299,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     const value = 'tag:' + key;
                     const chip = button(tag, () => {
                         chip.focus({ preventScroll: true });
-                        filter.value = filter.value === value ? '' : value;
+                        activeFilter = activeFilter === value ? '' : value;
                         render();
                     });
                     chip.className = 'tag-chip'; chip.draggable = false;
                     chip.setAttribute('aria-label', `Filter by tag ${tag}`);
-                    chip.setAttribute('aria-pressed', String(filter.value === value));
+                    chip.setAttribute('aria-pressed', String(activeFilter === value));
                     chipTargets.set(chip, { block, key });
                     chip.addEventListener('dragstart', event => { event.preventDefault(); event.stopPropagation(); });
                     if (focusedChip?.block === block && focusedChip.key === key) restoredChip = chip;
@@ -296,20 +336,20 @@ document.addEventListener('DOMContentLoaded', () => {
             card.addEventListener('click', () => copy(block.text));
             // A draggable ancestor must not turn a chip press into a card drag.
             card.addEventListener('pointerdown', event => {
-                card.draggable = !editing && !filter.value && !event.target.closest('.tag-chip');
+                card.draggable = !editing && !activeFilter && !event.target.closest('.tag-chip');
             });
             for (const eventName of ['pointerup', 'pointercancel']) {
-                card.addEventListener(eventName, () => { card.draggable = !editing && !filter.value; });
+                card.addEventListener(eventName, () => { card.draggable = !editing && !activeFilter; });
             }
             card.addEventListener('dragstart', event => {
                 if (!card.draggable) { event.preventDefault(); return; }
                 dragging = block; card.classList.add('dragging'); event.dataTransfer.setData('text/plain', String(index));
             });
             card.addEventListener('dragend', () => { dragging = null; card.classList.remove('dragging'); });
-            card.addEventListener('dragover', event => { if (dragging && !editing && !filter.value) event.preventDefault(); });
+            card.addEventListener('dragover', event => { if (dragging && !editing && !activeFilter) event.preventDefault(); });
             card.addEventListener('drop', event => {
                 event.preventDefault();
-                if (!dragging || dragging === block || editing || filter.value) return;
+                if (!dragging || dragging === block || editing || activeFilter) return;
                 const from = blocks.indexOf(dragging);
                 blocks.splice(from, 1); blocks.splice(index, 0, dragging); dragging = null; save(); render();
             });
@@ -317,7 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         $('#empty-state').hidden = list.children.length > 0;
         $('#block-count').textContent = `${matchingCount} of ${blocks.length} blocks${editingException ? ' match the filter (+1 editing block)' : ''}`;
-        if (focusedChip) (restoredChip || filter).focus({ preventScroll: true });
+        if (focusedChip) (restoredChip || $('#all-tags')).focus({ preventScroll: true });
     }
     add.addEventListener('click', () => {
         if (!noteColorControl.valid()) return;
@@ -328,7 +368,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     $('#cancel-edit').addEventListener('click', () => { resetEditor(); render(); title.focus(); });
     text.addEventListener('input', updateDetectedLinks);
-    filter.addEventListener('change', render);
+    $('#all-tags').addEventListener('click', () => { activeFilter = ''; render(); });
+    $('#tag-search').addEventListener('input', renderTagFilters);
+    compactFilters.addEventListener('change', render);
     noteColorControl = colorControl('note-color', '#F8F8F8', chooseColor);
     const backgroundColor = opaqueHex(read('preferredColor'), '#F0F0F0');
     colorControl('background-color', backgroundColor, color => {
