@@ -363,6 +363,12 @@ color: black;
 .block-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .block-actions button, #cancel-edit, select { padding: 6px 10px; }
 .blocks-section { margin-top: 20px; }
+.block-links, .detected-links { margin: 12px 0; }
+.block-links h3, .detected-links h2 { font-size: 1rem; margin: 0 0 8px; }
+.link-list { padding-left: 22px; margin: 0; }
+.link-list li { min-width: 0; margin-bottom: 6px; overflow-wrap: anywhere; }
+.link-list a { overflow-wrap: anywhere; color: #123a60; text-decoration: underline; }
+#tag-filter { max-width: 100%; }
 .header-buttons { flex-wrap: wrap; gap: 8px; }
 #status { min-height: 1.5em; }
 #block-count { margin-left: 12px; }

@@ -105,6 +105,11 @@
             <label for="new-text">Text:</label>
             <textarea id="new-text" placeholder="Enter your text here..."></textarea>
         </div>
+        <section id="detected-links" class="detected-links" aria-labelledby="detected-links-heading">
+            <h2 id="detected-links-heading">Detected links</h2>
+            <ul id="detected-links-list" class="link-list" hidden></ul>
+            <p id="no-detected-links">No links detected.</p>
+        </section>
         <div class="block-color-selector">
     <label>Block Color:</label>
     <div class="color-dots">
@@ -120,8 +125,8 @@
         <p id="status" role="status" aria-live="polite"></p>
     </div>
     <section class="container blocks-section" aria-label="Saved text blocks">
-        <label for="tag-filter">Filter by hashtag:</label>
-        <select id="tag-filter"><option value="">All hashtags</option></select>
+        <label for="tag-filter">Filter by hashtag or detected link:</label>
+        <select id="tag-filter"><option value="">All blocks</option></select>
         <span id="block-count"></span>
         <p id="empty-state">No blocks to show. Add a text block above.</p>
         <div id="text-blocks"></div>
