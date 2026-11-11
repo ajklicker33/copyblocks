@@ -396,3 +396,14 @@ button:disabled { cursor: default; opacity: .5; }
     .app-header { gap: 10px; }
     .header-buttons { flex-basis: 100%; }
 }
+/* Backups stay out of the editor until requested. */
+#backups-dialog { box-sizing: border-box; width: min(540px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow: auto; padding: 18px; border: 1px solid #999; border-radius: 10px; color: #222; background: #fff; }
+#backups-dialog::backdrop { background: rgb(0 0 0 / 35%); }
+.backup-heading, .backup-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.backup-heading { justify-content: space-between; }
+.backup-heading h2 { margin: 0; font-size: 1.2rem; }
+#backups-dialog p { font-size: .9rem; overflow-wrap: anywhere; }
+#backups-dialog button { min-height: 36px; margin: 0; }
+#import-preview { border-top: 1px solid #ccc; margin-top: 12px; }
+#replace-import { background: #a52b28; color: white; }
+#backup-status:empty { display: none; }

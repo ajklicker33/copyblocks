@@ -77,13 +77,13 @@ try {
             $null = Invoke-PageCommand 'Runtime.evaluate' @{expression='window.testMotion = null'}
         }
         if ($state.key) {
-            if ($state.key -notin @('Enter', 'Space', 'Tab')) { throw 'Unsupported test key request.' }
-            $keyCode = if ($state.key -eq 'Enter') { 13 } elseif ($state.key -eq 'Tab') { 9 } else { 32 }
+            if ($state.key -notin @('Enter', 'Space', 'Tab', 'Escape')) { throw 'Unsupported test key request.' }
+            $keyCode = if ($state.key -eq 'Enter') { 13 } elseif ($state.key -eq 'Tab') { 9 } elseif ($state.key -eq 'Escape') { 27 } else { 32 }
             $keyValue = if ($state.key -eq 'Space') { ' ' } else { $state.key }
             $null = Invoke-PageCommand 'Page.bringToFront' @{}
             foreach ($keyType in @('keyDown', 'keyUp')) {
                 $keyParams = @{type=$keyType; key=$keyValue; code=$state.key; windowsVirtualKeyCode=$keyCode}
-                if ($keyType -eq 'keyDown' -and $state.key -ne 'Tab') { $keyParams.text = if ($state.key -eq 'Enter') { "`r" } else { ' ' } }
+                if ($keyType -eq 'keyDown' -and $state.key -in @('Enter', 'Space')) { $keyParams.text = if ($state.key -eq 'Enter') { "`r" } else { ' ' } }
                 $null = Invoke-PageCommand 'Input.dispatchKeyEvent' $keyParams
             }
             $null = Invoke-PageCommand 'Runtime.evaluate' @{expression='window.testKey = null'}

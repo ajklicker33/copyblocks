@@ -408,21 +408,68 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.layout-option').forEach(option => option.addEventListener('click', () => {
         list.style.setProperty('--columns', option.dataset.columns); write('preferredColumns', option.dataset.columns);
     }));
+    const backupDialog = $('#backups-dialog');
+    const backupStatus = message => { $('#backup-status').textContent = message; };
+    let pendingImport = null;
+    let importVersion = 0;
+    function cancelImport() {
+        importVersion++;
+        pendingImport = null;
+        $('#import-preview').hidden = true;
+        $('#file-input').value = '';
+        $('#replace-import').disabled = true;
+    }
+    $('#backups-button').addEventListener('click', () => {
+        cancelImport(); backupStatus(''); backupDialog.showModal(); $('#export-button').focus();
+    });
+    $('#close-backups').addEventListener('click', () => backupDialog.close());
+    backupDialog.addEventListener('close', () => {
+        if (backupDialog.open) return;
+        cancelImport(); $('#backups-button').focus({ preventScroll: true });
+    });
+    backupDialog.addEventListener('cancel', () => cancelImport());
+    $('#cancel-import').addEventListener('click', () => {
+        cancelImport(); backupStatus('Import cancelled. Notes and draft kept.'); $('#import-button').focus();
+    });
     $('#export-button').addEventListener('click', () => {
+        try {
         const url = URL.createObjectURL(new Blob([JSON.stringify(blocks, null, 2)], { type: 'application/json' }));
         const link = document.createElement('a'); link.href = url; link.download = 'text-blocks-backup.json';
         document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+        backupStatus(`Download requested for ${blocks.length} saved notes. Unsaved drafts are excluded.`);
+        } catch { backupStatus('Export failed. Please try again.'); }
     });
     $('#import-button').addEventListener('click', () => $('#file-input').click());
     $('#file-input').addEventListener('change', async event => {
         const file = event.target.files[0];
         if (!file) return;
+        cancelImport();
+        const version = importVersion;
+        backupStatus('Reading backup…');
         try {
             const imported = validate(JSON.parse(await file.text()));
-            if ((blocks.length || storageBlocked) && !confirm('Replace all blocks with this backup? Export first to keep your current blocks.')) return;
-            blocks = imported; storageBlocked = false; resetEditor(); save(); render();
-        } catch { notify('Invalid backup. Blocks need text, optional title and color, and optional tags as an array of strings. Current blocks were kept.'); }
-        finally { event.target.value = ''; }
+            if (version !== importVersion) return;
+            pendingImport = imported;
+            $('#import-summary').textContent = `${file.name}: ${imported.length} valid notes. Replaces ${blocks.length} current notes${storageBlocked ? ' and unreadable saved data' : ''}.`;
+            $('#import-preview').hidden = false;
+            $('#replace-import').disabled = false;
+            backupStatus('Backup validated. Review before replacing.');
+            $('#cancel-import').focus();
+        } catch {
+            if (version !== importVersion) return;
+            backupStatus('Invalid backup. Expected a JSON array of notes with text, optional title and color, and optional tags as an array of strings. Notes and draft kept.');
+            $('#import-button').focus();
+        }
+    });
+    $('#replace-import').addEventListener('click', () => {
+        if (!pendingImport) return;
+        if (!write('textBlocks', JSON.stringify(pendingImport))) {
+            backupStatus('Could not save the backup in this browser. Existing notes and draft were kept. Export current notes, or free storage and try Replace again.');
+            return;
+        }
+        blocks = pendingImport; storageBlocked = false; resetEditor(); render(); cancelImport();
+        backupStatus(`Imported ${blocks.length} notes.`); notify(`Imported ${blocks.length} notes.`);
+        $('#import-button').focus();
     });
     $('#clear-button').addEventListener('click', () => {
         if (!confirm('Delete all text blocks? Export a backup first to keep them.')) return;

@@ -41,12 +41,21 @@ function filterBy(value) {
     if (target.closest('details')) d.querySelector('#more-tags').open = true;
     target.click();
 }
-async function importJSON(value) {
+async function previewImport(value) {
+    if (!d.querySelector('#backups-dialog').open) click('#backups-button');
     const input = d.querySelector('#file-input');
     const transfer = new w.DataTransfer();
     transfer.items.add(new w.File([value], 'backup.json', { type: 'application/json' }));
     input.files = transfer.files; input.dispatchEvent(new w.Event('change'));
-    await until(() => !input.value, 'import completion');
+    await until(() => d.querySelector('#backup-status').textContent !== 'Reading backup…', 'import validation');
+}
+async function importJSON(value) {
+    await previewImport(value);
+    if (!d.querySelector('#import-preview').hidden) click(w.confirm() ? '#replace-import' : '#cancel-import');
+    await new Promise(resolve => {
+        d.querySelector('#backups-dialog').addEventListener('close', resolve, { once: true });
+        click('#close-backups');
+    });
 }
 frame.onload = async () => {
     attach();
@@ -283,7 +292,7 @@ frame.onload = async () => {
         const beforeInvalidTags = w.localStorage.getItem('textBlocks');
         for (const tags of [null, 'work', [42], [{}]]) {
             await importJSON(JSON.stringify([{ text: 'Should not replace', tags }]));
-            check(w.localStorage.getItem('textBlocks') === beforeInvalidTags && status().startsWith('Invalid backup.'), 'invalid tag schema preserves existing collection');
+            check(w.localStorage.getItem('textBlocks') === beforeInvalidTags && d.querySelector('#backup-status').textContent.startsWith('Invalid backup.'), 'invalid tag schema preserves existing collection');
         }
         await importJSON(JSON.stringify([
             { title: 'HTML tag', text: 'Safe', tags: ['<img src=x onerror=alert(1)>', '日本語', 'Work'] },
@@ -615,6 +624,41 @@ frame.onload = async () => {
         check(d.documentElement.scrollWidth <= w.innerWidth, 'layout fits at 200 percent CSS zoom');
         check([...d.querySelectorAll('.text-block')].every(card => rect(card.querySelector('.block-title')).top >= rect(card.querySelector('.block-top-actions')).bottom), 'enlarged rendering preserves title/action separation');
         d.body.style.zoom = '';
+        // Backups require a reviewed preview and preserve drafts until replacement succeeds.
+        action('Edit');
+        d.querySelector('#new-text').value = 'Unsaved backup draft';
+        const backupBefore = w.localStorage.getItem('textBlocks');
+        click('#backups-button');
+        check(d.querySelector('#backups-dialog').open && d.activeElement.id === 'export-button', 'Backups opens a modal with export focus');
+        await previewImport('{bad json');
+        check(d.querySelector('#import-preview').hidden && d.querySelector('#backup-status').textContent.startsWith('Invalid backup.'), 'malformed backup reports inline error without replacement');
+        await previewImport(JSON.stringify([{ text: 'New backup note' }]));
+        check(d.querySelector('#import-summary').textContent.includes('backup.json: 1 valid notes'), 'backup preview shows filename and validated count');
+        check(w.localStorage.getItem('textBlocks') === backupBefore && d.querySelector('#new-text').value === 'Unsaved backup draft', 'preview keeps stored notes and unsaved edit intact');
+        check(d.activeElement.id === 'cancel-import', 'preview focuses the safe Cancel action');
+        click('#cancel-import');
+        check(d.querySelector('#import-preview').hidden && d.activeElement.id === 'import-button' && !d.querySelector('#file-input').value, 'Cancel resets file selection and returns import focus');
+        await previewImport(JSON.stringify([{ text: 'New backup note' }]));
+        const backupSet = w.Storage.prototype.setItem;
+        w.Storage.prototype.setItem = () => { throw new w.DOMException('Full', 'QuotaExceededError'); };
+        try { click('#replace-import'); } finally { w.Storage.prototype.setItem = backupSet; }
+        check(w.localStorage.getItem('textBlocks') === backupBefore && d.querySelector('#new-text').value === 'Unsaved backup draft' && !!d.querySelector('.is-editing'), 'failed replacement preserves stored collection and active draft');
+        check(d.querySelector('#backup-status').textContent.includes('try Replace again') && !d.querySelector('#import-preview').hidden, 'storage failure retains preview and offers recovery');
+        click('#replace-import');
+        check(stored().length === 1 && stored()[0].text === 'New backup note' && !d.querySelector('#new-text').value && !d.querySelector('.is-editing'), 'retry after storage recovery replaces notes and clears edit');
+        await previewImport('[]');
+        check(d.querySelector('#import-summary').textContent.includes('0 valid notes') && stored().length === 1, 'empty backup still requires confirmation');
+        click('#replace-import');
+        check(stored().length === 0 && d.querySelector('#backup-status').textContent === 'Imported 0 notes.', 'explicit empty replacement clears collection');
+        frame.style.width = '320px';
+        await previewImport(JSON.stringify([{ text: 'Narrow preview' }]));
+        check(d.querySelector('#backups-dialog').scrollWidth <= d.querySelector('#backups-dialog').clientWidth && rect(d.querySelector('#backups-dialog')).right <= w.innerWidth, 'backup preview fits 320px');
+        await pressChipKey('Escape');
+        await until(() => !d.querySelector('#backups-dialog').open, 'Escape closes backups');
+        check(d.activeElement.id === 'backups-button' && stored().length === 0, 'Escape cancels preview and returns focus without replacement');
+        click('#backups-button');
+        check(d.querySelector('#import-preview').hidden, 'reopening backups never retains stale replacement');
+        click('#close-backups');
         if (new URLSearchParams(location.search).has('forceFailure')) check(false, 'intentional runner failure probe');
         output.dataset.status = 'passed';
         output.textContent = results.join('\n') + `\nALL PASSED (${results.length} assertions)`;

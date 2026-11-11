@@ -13,8 +13,7 @@
     <header class="container app-header">
         <h1>CopyBlocks</h1>
         <div class="header-buttons">
-            <button id="export-button">Export Data</button>
-            <button id="import-button">Import Data</button>
+            <button id="backups-button" aria-haspopup="dialog">Backups</button>
             <button id="clear-button">Clear All</button>
             <div class="layout-wrapper">
         <button id="layout-button" aria-label="Choose column layout">
@@ -131,7 +130,19 @@
         <p id="empty-state">No blocks to show. Add a text block above.</p>
         <div id="text-blocks"></div>
     </section>
-    <input type="file" id="file-input" class="hidden" accept=".json">
+    <dialog id="backups-dialog" aria-labelledby="backups-heading">
+        <div class="backup-heading"><h2 id="backups-heading">Backups</h2><button id="close-backups" aria-label="Close backups">Close</button></div>
+        <p>Export all saved notes, including hidden notes. Unsaved drafts are excluded.</p>
+        <div class="backup-actions"><button id="export-button">Export all notes</button><button id="import-button">Import backup</button></div>
+        <input type="file" id="file-input" class="hidden" accept=".json,application/json">
+        <p id="backup-status" role="status" aria-live="polite"></p>
+        <section id="import-preview" hidden aria-labelledby="import-heading">
+            <h3 id="import-heading">Replace notes?</h3>
+            <p id="import-summary"></p>
+            <p>This replaces your entire collection and discards the editor draft. Export your current notes first if you want to keep them.</p>
+            <div class="backup-actions"><button id="cancel-import">Cancel</button><button id="replace-import">Replace all notes</button></div>
+        </section>
+    </dialog>
     <div class="copied-feedback">Copied!</div>
     <script src="vendor/qrcodegen.js"></script>
     <script src="qr-code.js"></script>
