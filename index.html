@@ -10,7 +10,7 @@
 </head>
 
 <body>
-    <div class="container">
+    <header class="container app-header">
         <h1>CopyBlocks</h1>
         <div class="header-buttons">
             <button id="export-button">Export Data</button>
@@ -75,15 +75,21 @@
                 <span id="background-color-error" class="color-error" aria-live="polite"></span>
             </fieldset>
         </div>
-    </div>
-    <br>
-    <div class="container">
-        <div class="input-group">
-            <label for="block-title">Title:</label>
-            <input type="text" id="block-title" placeholder="Enter a title for your text block">
+    </header>
+    <section class="container note-editor" aria-label="Create or edit a note">
+        <div class="editor-fields">
+            <div class="input-group">
+                <label for="block-title">Title</label>
+                <input type="text" id="block-title" placeholder="Note title">
+            </div>
+            <div class="input-group">
+                <label for="block-tags">Tags</label>
+                <input type="text" id="block-tags" placeholder="work, urgent" aria-describedby="tags-help">
+                <p id="tags-help">Comma-separated; excluded from copied text and codes.</p>
+            </div>
         </div>
         <div class="input-group">
-            <label for="new-text">Text:</label>
+            <label for="new-text">Text</label>
             <textarea id="new-text" placeholder="Enter your text here..."></textarea>
         </div>
         <section id="detected-links" class="detected-links" aria-labelledby="detected-links-heading">
@@ -91,23 +97,22 @@
             <ul id="detected-links-list" class="link-list" hidden></ul>
             <p id="no-detected-links">No links detected.</p>
         </section>
-        <div class="input-group">
-            <label for="block-tags">Tags:</label>
-            <input type="text" id="block-tags" placeholder="work, urgent" aria-describedby="tags-help">
-            <p id="tags-help">Separate tags with commas. Tags are not included in copied text or QR codes.</p>
+        <div class="editor-footer">
+            <fieldset class="color-control">
+                <legend>Note color</legend>
+                <label for="note-color-picker">Color</label>
+                <input type="color" id="note-color-picker" value="#f8f8f8">
+                <label for="note-color-hex">HEX</label>
+                <input type="text" id="note-color-hex" class="hex-input" value="#F8F8F8" spellcheck="false" aria-describedby="note-color-error">
+                <span id="note-color-error" class="color-error" aria-live="polite"></span>
+            </fieldset>
+            <div class="editor-actions">
+                <button id="add-button">Add Text Block</button>
+                <button id="cancel-edit" hidden>Cancel Edit</button>
+            </div>
         </div>
-        <fieldset class="color-control">
-            <legend>Note color</legend>
-            <label for="note-color-picker">Color</label>
-            <input type="color" id="note-color-picker" value="#f8f8f8">
-            <label for="note-color-hex">HEX</label>
-            <input type="text" id="note-color-hex" class="hex-input" value="#F8F8F8" spellcheck="false" aria-describedby="note-color-error">
-            <span id="note-color-error" class="color-error" aria-live="polite"></span>
-        </fieldset>
-        <button id="add-button">Add Text Block</button>
-        <button id="cancel-edit" hidden>Cancel Edit</button>
         <p id="status" role="status" aria-live="polite"></p>
-    </div>
+    </section>
     <section class="container blocks-section" aria-label="Saved text blocks">
         <div id="tag-filter" class="tag-filter" role="group" aria-label="Filter notes by tag">
             <div class="tag-filter-row">

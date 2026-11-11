@@ -577,6 +577,44 @@ frame.onload = async () => {
         check(stored()[1].color === '#ABCDEF' && stored()[0].color === '#123456', 'reuse does not mutate source or target before Save');
         click('.editing-badge');
         check(stored()[1].color === '#123456' && stored()[0].color === '#123456' && stored()[1].text === 'Target body', 'explicit Save applies source color only to edited note');
+        filterBy(''); frame.style.width = '1200px';
+        await importJSON(JSON.stringify([
+            { title: 'Short', text: 'Small note', tags: ['layout'] },
+            { title: 'A longer title that must remain readable without clipping', text: 'Long text\n'.repeat(20), tags: ['layout', 'long'] },
+            { title: 'Too large for QR', text: 'x'.repeat(2400), tags: ['oversize'] }
+        ]));
+        await new Promise(resolve => setTimeout(resolve, 40));
+        click('[data-columns="2"]');
+        const rect = element => element.getBoundingClientRect();
+        check(Math.abs(rect(d.querySelector('#block-title')).top - rect(d.querySelector('#block-tags')).top) < 2, 'title and tags are adjacent on desktop');
+        check(rect(d.querySelector('.editor-actions')).left > rect(d.querySelector('.editor-footer .color-control')).left, 'editor color and save controls share a compact row');
+        const layoutCards = [...d.querySelectorAll('.text-block')];
+        for (const card of layoutCards) {
+            const topButtons = [...card.querySelectorAll('.block-top-actions button')];
+            check(topButtons.map(button => button.textContent).join() === 'Copy,Edit,Delete' && card.firstElementChild.classList.contains('block-top-actions'), 'copy edit delete occupy the first visual and DOM row');
+            check(Math.max(...topButtons.map(button => rect(button).width)) - Math.min(...topButtons.map(button => rect(button).width)) < 2, 'top action widths are evenly distributed');
+            check(rect(card.querySelector('.block-title')).top >= rect(card.querySelector('.block-top-actions')).bottom, 'top controls do not overlap title');
+            check(card.lastElementChild.classList.contains('block-footer') && card.querySelector('.block-move-actions').children.length === 2, 'footer retains temporary keyboard movement controls');
+        }
+        check(Math.abs(rect(layoutCards[0].querySelector('.block-footer')).bottom - rect(layoutCards[1].querySelector('.block-footer')).bottom) < 2, 'unequal-height content keeps neighboring footers aligned');
+        cardAction('Short', 'Show QR');
+        const firstCard = d.querySelector('.text-block');
+        check(rect(firstCard.querySelector('.qr-view')).bottom <= rect(firstCard.querySelector('.block-footer')).top, 'QR image stays above bottom control rows');
+        check(Math.abs(rect(firstCard.querySelector('.block-footer')).bottom - rect(layoutCards[1].querySelector('.block-footer')).bottom) < 2, 'opening QR keeps row footers aligned');
+        cardAction('Too large for QR', 'Show QR');
+        check(layoutCards[2].querySelector('.qr-error') && rect(layoutCards[2].querySelector('.qr-view')).bottom <= rect(layoutCards[2].querySelector('.block-footer')).top, 'QR error remains content above controls');
+        firstCard.querySelector('.block-top-actions button').focus();
+        await pressChipKey('Tab'); check(d.activeElement.textContent === 'Edit', 'native Tab follows visual top action order to Edit');
+        await pressChipKey('Tab'); check(d.activeElement.textContent === 'Delete', 'native Tab follows visual top action order to Delete');
+        frame.style.width = '320px'; await new Promise(resolve => setTimeout(resolve, 40));
+        check(d.documentElement.scrollWidth <= w.innerWidth, 'compact header editor and cards fit 320px');
+        check(rect(d.querySelector('#block-tags')).top > rect(d.querySelector('#block-title')).bottom, 'editor fields stack in DOM order on narrow screens');
+        check([...d.querySelectorAll('.block-actions button')].every(button => rect(button).height >= 32 && button.scrollWidth <= button.clientWidth + 1), 'compact actions preserve usable height and wrap labels');
+        frame.style.width = '1200px'; d.body.style.zoom = '2';
+        await new Promise(resolve => setTimeout(resolve, 40));
+        check(d.documentElement.scrollWidth <= w.innerWidth, 'layout fits at 200 percent CSS zoom');
+        check([...d.querySelectorAll('.text-block')].every(card => rect(card.querySelector('.block-title')).top >= rect(card.querySelector('.block-top-actions')).bottom), 'enlarged rendering preserves title/action separation');
+        d.body.style.zoom = '';
         if (new URLSearchParams(location.search).has('forceFailure')) check(false, 'intentional runner failure probe');
         output.dataset.status = 'passed';
         output.textContent = results.join('\n') + `\nALL PASSED (${results.length} assertions)`;

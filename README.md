@@ -29,12 +29,12 @@ Commit `a24a0ae` replaced the application with unused class scaffolding, removin
 | P1 | Tag chip appearance and interaction | Implemented in Step 8: smaller, muted button chips toggle the matching tag filter with a checkmark and keyboard support. |
 | P1 | Color picker and color value | Implemented in Step 10: native note/background pickers, synchronized HEX fields, per-note color labels and contrast-aware text. |
 | P1 | Editing visibility | Implemented in Step 13: temporarily show the edited block first with an Editing badge and animated dotted outline; saved order stays unchanged. |
-| P1 | Block action placement | Planned in Step 14: evenly spaced top Copy/Edit/Delete controls and bottom code controls. Step 16 replaces movement buttons with drag-and-drop. |
+| P1 | Block action placement | Implemented in Step 14: evenly spaced top Copy/Edit/Delete controls and bottom code controls. Step 16 replaces movement buttons with drag-and-drop. |
 | P1 | Drag destination preview | Planned in Step 16: drag-and-drop replaces Move up/down, with an empty dotted insertion placeholder and keyboard/touch support. |
 | P2 | Words/icons toggle | Planned in Step 15: a top-of-page preference switches block action labels between words and accessible icons. |
 | P1 | Popular tag filters | Implemented in Step 17: responsive frequent-tag buttons/counts, collapsible searchable overflow and a visible active tag; detected links are not filterable. |
 | P1 | Color reuse shortcut | Implemented in Step 18: note HEX buttons fill the note picker without entering edit mode or saving. |
-| P1 | Compact interface | Step 14 now includes a smaller page/block title area and adjacent responsive control groups. |
+| P1 | Compact interface | Implemented in Step 14: a smaller page/block title area and adjacent responsive control groups. |
 | P2 | Backup interface | Step 19 groups import/export with clear validation, preview counts and explicit replacement confirmation. |
 | P1 | Wrapping / separate blocks div | Implemented responsive wrapping and a separate saved-blocks section. |
 | P2 | Detect links | Detected-link lists and live editor preview preserve card-click copying. Step 17 removed URL filtering. |
@@ -52,7 +52,7 @@ In an editor that provides it, right-click `index.html` and choose **Open in Int
 
 ## Executable implementation plan
 
-To start a task, prompt **"Begin work on Step X in README.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7, 8, 10, 13, 17 and 18 are **Complete**; Steps 4–6, 9, 11–12, 14–16 and 19 are **Not started**. Recommended order: **14 → 19 → 16 → 15 → 11 → 9 → 12 → 4**: simplify filtering, add color reuse, compact the interface and improve backups before the larger interaction changes. Steps 5–6 remain lower-priority optional work. The earlier regression fix and working features above are already implemented.
+To start a task, prompt **"Begin work on Step X in README.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7, 8, 10, 13–14, 17 and 18 are **Complete**; Steps 4–6, 9, 11–12, 15–16 and 19 are **Not started**. Recommended order: **19 → 16 → 15 → 11 → 9 → 12 → 4**: improve backups before the larger interaction changes. Steps 5–6 remain lower-priority optional work. The earlier regression fix and working features above are already implemented.
 
 ### Instructions for the implementing agent
 
@@ -168,9 +168,11 @@ Implementation: tag chips are native buttons with smaller text, a muted gray bac
 
 Validation: all 145 browser assertions plus actual downloaded JSON verification passed. The runner now sends native Enter/Space key events through Chrome's debugging protocol. Checks cover repeated clicks, focus retention, pressed states, non-color indicators, Unicode, URL-shaped tags, dropdown synchronization, link-to-tag switching, drag prevention, compact target height, 320px wrapping, imports and removal of the last selected tag. Existing copy, QR decoding and persistence checks still pass. Physical pointer-driven dragging remains a manual release check; chip drag isolation is exercised with synthetic pointer/drag events.
 
-### Step 9 — Number detected links and their matching QR codes
+### Step 9 — Centered QR overlays and numbered link codes
 
 **Status:** Not started. **Priority:** P2. **Dependencies:** Steps 2–3.
+
+Presentation refinement: show QR codes in an overlay centered on their own block instead of inserting them into the text flow. This supersedes Step 14's inline QR placement when Step 9 ships. Keep the block's size and position stable. Provide a clearly labeled Close control, Escape dismissal, focus return to the opening control, and prevent overlay interactions from copying or dragging the block. Fit short cards and 320px screens without clipping the QR quiet zone; preserve scannability and accessible error messages. For multiple link codes, use a compact labeled selector within the overlay, retaining the matching link numbers and distinct Full text QR label. Verify positioning, dismissal, keyboard access and independent QR decoding.
 
 Scope: render Detected links as an ordered list in both the editor preview and saved blocks. Number distinct links 1, 2, 3 in first-appearance order within each block; repeated occurrences of the same parsed URL share one number. On saved blocks, provide on-demand QR views for those links, labeled **Link 1**, **Link 2**, etc., so the list and QR images can be matched at a glance. Each link QR encodes exactly the destination represented by its matching detected link, using the existing URL parser's normalization. Do not include the display number in the encoded payload.
 
@@ -230,7 +232,7 @@ Validation: all 198 browser assertions plus actual downloaded JSON verification 
 
 ### Step 14 — Compact layout and block action placement
 
-**Status:** Not started. **Priority:** P1.
+**Status:** Complete (2026-11-11). **Priority:** P1.
 
 Layout refinement: reduce the page title/header height and block-title padding without truncating meaningful titles. Use adjacent, aligned controls for related fields (title/tags where space permits, color/HEX, action groups and backup controls) rather than separate full-width stacked panels. Keep the body textarea comfortably usable. Use responsive grid/flex layouts: compact rows on desktop, sensible wrapping/stacking at narrow widths, visible labels and a tab order matching the visual order. Do not shrink interactive hit areas merely to save space. Coordinate the backup entry point with Step 19.
 
@@ -239,6 +241,10 @@ Scope: place **Copy**, **Edit** and **Delete** in an evenly spaced row aligned t
 Rendered code images remain content above the bottom code-control row; opening a code must not move those controls into the middle of the block. Do not add a nonfunctional barcode control before Step 12. When barcode support arrives, use the same code-control row. Maintain equal spacing for whichever code controls exist. Preserve all current confirmation, filtering, editing, copy and Show/Hide behavior.
 
 Acceptance: verify reduced header/title whitespace and adjacent control groups without horizontal overflow at 320px or overlap at 200% zoom. Inspect short/long text, titles, tags, multiple links, visible QR images and error messages at mobile and desktop widths. Top and bottom controls remain evenly distributed without overflow, clipped focus rings or title overlap. Keyboard tab order follows the visual order; control clicks never trigger the card's copy handler. Existing disabled movement rules, including editing rules if Step 13 is present, remain effective. Test with the words/icons preference if Step 15 is already implemented.
+
+Implementation: the smaller header wraps its toolbar, title/tags share a desktop row, and note color/save controls sit alongside one another when space permits. Narrow layouts stack in DOM order. Each card starts with equal-width Copy/Edit/Delete buttons and ends with a bottom-aligned footer containing QR controls and the temporary movement row. QR images and errors remain above that footer; titles remain fully readable.
+
+Validation: all 259 browser assertions and actual downloaded JSON verification passed. New checks cover desktop adjacency, equal action widths, unequal-height card footer alignment, visible QR/error placement, native Tab order, 320px wrapping and 200% CSS zoom. Physical-device visual review and browser-level zoom remain manual release checks.
 
 ### Step 15 — Toggle block actions between words and icons
 

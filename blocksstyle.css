@@ -357,3 +357,42 @@ button:disabled { cursor: default; opacity: .5; }
 :focus-visible { outline: 3px solid #007399; outline-offset: 3px; }
 [hidden] { display: none !important; }
 @media (max-width: 640px) { #text-blocks { grid-template-columns: minmax(0, 1fr); } body { padding: 10px; } }
+
+/* Compact groups follow DOM order and wrap rather than compressing controls. */
+.container { padding: 14px; }
+.app-header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.app-header h1 { margin: 0; font-size: 1.4rem; }
+.header-buttons { margin: 0; flex: 1; align-items: center; gap: 6px; }
+.header-buttons button { margin: 0; min-height: 32px; padding: 6px 10px; }
+.color-control { padding: 5px 8px; margin: 0; gap: 6px; }
+.note-editor { margin-top: 12px; }
+.editor-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.input-group { min-width: 0; margin-bottom: 8px; }
+.input-group label { margin-bottom: 4px; font-size: .85rem; }
+.input-group input, .input-group textarea { margin-bottom: 0; padding: 8px; }
+.note-editor textarea { min-height: 110px; }
+#tags-help { font-size: .75rem; margin: 4px 0 0; }
+.editor-footer, .editor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.editor-footer { gap: 12px; }
+.editor-actions button { min-height: 34px; }
+.note-editor .detected-links { margin: 0 0 8px; font-size: .8rem; }
+.note-editor .detected-links h2 { font-size: .8rem; margin-bottom: 4px; }
+#no-detected-links { margin: 0; color: #666; }
+#status:empty { display: none; }
+#status { margin: 8px 0 0; }
+.blocks-section { margin-top: 12px; }
+#text-blocks { margin-top: 14px; }
+.text-block { display: flex; flex-direction: column; }
+.block-title { margin: 8px 0; padding: 0 0 6px; }
+.note-color-value, .editing-badge { align-self: flex-start; }
+.editing-badge { margin-top: 8px; }
+.block-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; margin: 0; }
+.block-actions button { min-width: 0; min-height: 32px; padding: 6px 4px; overflow-wrap: anywhere; }
+.block-top-actions { padding-bottom: 8px; border-bottom: 1px solid currentColor; }
+.block-footer { margin-top: auto; padding-top: 12px; }
+.block-move-actions { margin-top: 6px; }
+@media (max-width: 640px) {
+    .editor-fields { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .app-header { gap: 10px; }
+    .header-buttons { flex-basis: 100%; }
+}

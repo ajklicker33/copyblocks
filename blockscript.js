@@ -262,7 +262,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const heading = document.createElement('h2'); heading.className = 'block-title'; heading.textContent = block.title;
             const content = document.createElement('div'); content.className = 'text-content'; content.textContent = block.text;
-            const actions = document.createElement('div'); actions.className = 'block-actions';
+            const actions = document.createElement('div'); actions.className = 'block-actions block-top-actions';
+            const footer = document.createElement('div'); footer.className = 'block-footer';
+            const codeActions = document.createElement('div'); codeActions.className = 'block-actions block-code-actions';
+            const moveActions = document.createElement('div'); moveActions.className = 'block-actions block-move-actions';
+            footer.append(codeActions, moveActions);
             actions.append(button('Copy', () => copy(block.text)), button('Edit', () => {
                 if (!editing) creatorColor = selectedColor;
                 editing = block; title.value = block.title; text.value = block.text; chooseColor(block.color);
@@ -284,8 +288,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 move.disabled = !!editing || !!activeFilter || index + offset < 0 || index + offset >= blocks.length;
                 if (editing) move.title = 'Finish editing before reordering blocks.';
-                actions.append(move);
+                moveActions.append(move);
             }
+            card.prepend(actions);
             card.append(heading, content);
             const colorLabel = button(block.color.toUpperCase(), () => chooseColor(block.color));
             colorLabel.className = 'note-color-value'; colorLabel.draggable = false;
@@ -322,20 +327,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 links.append(label, linkList(urls));
                 card.append(links);
             }
-            card.append(actions);
+            card.append(footer);
             const qrButton = button(openQR.has(block) ? 'Hide QR' : 'Show QR', () => {
                 if (openQR.has(block)) {
                     openQR.delete(block); qrViews.delete(block);
                     card.querySelector('.qr-view')?.remove();
                 } else {
-                    openQR.add(block); card.append(qrView(block));
+                    openQR.add(block); card.insertBefore(qrView(block), footer);
                 }
                 qrButton.textContent = openQR.has(block) ? 'Hide QR' : 'Show QR';
                 qrButton.setAttribute('aria-expanded', String(openQR.has(block)));
             });
             qrButton.setAttribute('aria-expanded', String(openQR.has(block)));
-            actions.append(qrButton);
-            if (openQR.has(block)) card.append(qrView(block));
+            codeActions.append(qrButton);
+            if (openQR.has(block)) card.insertBefore(qrView(block), footer);
             card.addEventListener('click', () => copy(block.text));
             // A draggable ancestor must not turn a chip press into a card drag.
             card.addEventListener('pointerdown', event => {
