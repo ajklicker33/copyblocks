@@ -287,8 +287,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 actions.append(move);
             }
             card.append(heading, content);
-            const colorLabel = document.createElement('span'); colorLabel.className = 'note-color-value';
-            colorLabel.textContent = block.color.toUpperCase(); colorLabel.setAttribute('aria-label', `Note color ${block.color}`);
+            const colorLabel = button(block.color.toUpperCase(), () => chooseColor(block.color));
+            colorLabel.className = 'note-color-value'; colorLabel.draggable = false;
+            colorLabel.setAttribute('aria-label', `Use note color ${block.color.toUpperCase()}`);
+            colorLabel.title = 'Use this color for the note being created or edited';
+            colorLabel.addEventListener('dragstart', event => { event.preventDefault(); event.stopPropagation(); });
             card.append(colorLabel);
             if (block.tags.length) {
                 const chips = document.createElement('ul'); chips.className = 'block-tags';
@@ -336,7 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
             card.addEventListener('click', () => copy(block.text));
             // A draggable ancestor must not turn a chip press into a card drag.
             card.addEventListener('pointerdown', event => {
-                card.draggable = !editing && !activeFilter && !event.target.closest('.tag-chip');
+                card.draggable = !editing && !activeFilter && !event.target.closest('.tag-chip, .note-color-value');
             });
             for (const eventName of ['pointerup', 'pointercancel']) {
                 card.addEventListener(eventName, () => { card.draggable = !editing && !activeFilter; });

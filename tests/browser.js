@@ -540,6 +540,43 @@ frame.onload = async () => {
         check(!d.querySelector('[data-tag-filter]') && d.querySelector('#more-tags').hidden && !!d.querySelector('.block-links a'), 'zero tags hide tag clutter while keeping detected links usable');
         click('#clear-button');
         check(d.querySelector('#all-tags').textContent === 'All (0)' && !d.querySelector('[data-tag-filter]'), 'clearing notes resets all tag quantities');
+        await importJSON(JSON.stringify([
+            { title: 'Source', text: 'Source body', color: '#123456', tags: ['shared'] },
+            { title: 'Target', text: 'Target body', color: '#ABCDEF', tags: ['shared'] }
+        ]));
+        const colorButton = name => [...d.querySelectorAll('.text-block')].find(card => card.querySelector('.block-title').textContent === name).querySelector('.note-color-value');
+        let colorCopies = 0;
+        Object.defineProperty(w.navigator, 'clipboard', { configurable: true, value: { writeText: async () => { colorCopies++; } } });
+        const beforeColorReuse = w.localStorage.getItem('textBlocks');
+        const originalBackground = w.localStorage.getItem('preferredColor');
+        d.querySelector('#block-title').value = 'Unsaved draft'; d.querySelector('#new-text').value = 'Keep draft text'; d.querySelector('#block-tags').value = 'draft';
+        setColorField('#note-color-hex', '#bad');
+        w.scrollTo(0, 120); const beforeColorScroll = w.scrollY;
+        colorButton('Source').click();
+        check(d.querySelector('#note-color-picker').value === '#123456' && d.querySelector('#note-color-hex').value === '#123456', 'HEX button synchronizes note color controls');
+        check(d.querySelector('#note-color-hex').getAttribute('aria-invalid') === 'false' && !d.querySelector('#note-color-error').textContent, 'HEX reuse clears invalid draft color');
+        check(d.querySelector('#block-title').value === 'Unsaved draft' && d.querySelector('#new-text').value === 'Keep draft text' && d.querySelector('#block-tags').value === 'draft' && !d.querySelector('.is-editing'), 'color reuse preserves draft and does not enter edit mode');
+        check(w.scrollY === beforeColorScroll && w.localStorage.getItem('textBlocks') === beforeColorReuse && colorCopies === 0, 'color reuse does not scroll save or copy');
+        check(w.localStorage.getItem('preferredColor') === originalBackground, 'color reuse leaves page background unchanged');
+        check(colorButton('Source').tagName === 'BUTTON' && colorButton('Source').getAttribute('aria-label') === 'Use note color #123456', 'HEX shortcut has native button semantics and descriptive name');
+        for (const key of ['Enter', 'Space']) {
+            setColorField('#note-color-hex', '#ffffff');
+            colorButton('Source').focus({ preventScroll: true }); const keyScroll = w.scrollY;
+            await pressChipKey(key);
+            check(d.querySelector('#note-color-hex').value === '#123456' && w.scrollY === keyScroll && colorCopies === 0, `native ${key} reuses HEX without scrolling or copying`);
+        }
+        const colorDragButton = colorButton('Source'), colorCard = colorDragButton.closest('.text-block');
+        colorDragButton.dispatchEvent(new w.PointerEvent('pointerdown', { bubbles: true }));
+        const colorDrag = new w.DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new w.DataTransfer() }); colorDragButton.dispatchEvent(colorDrag);
+        check(colorDrag.defaultPrevented && !colorCard.draggable && !colorCard.classList.contains('dragging'), 'HEX button cannot initiate block dragging');
+        colorDragButton.dispatchEvent(new w.PointerEvent('pointerup', { bubbles: true }));
+        click('#add-button');
+        check(stored()[2].color === '#123456' && stored()[2].text === 'Keep draft text', 'explicit Add applies reused color to draft');
+        filterBy('#shared'); cardAction('Target', 'Edit'); colorButton('Source').click();
+        check(d.querySelector('#tag-filter').dataset.activeTag === 'tag:shared' && d.querySelector('.is-editing .block-title').textContent === 'Target' && d.querySelector('#new-text').value === 'Target body', 'reuse while editing preserves selected filter and edit target');
+        check(stored()[1].color === '#ABCDEF' && stored()[0].color === '#123456', 'reuse does not mutate source or target before Save');
+        click('.editing-badge');
+        check(stored()[1].color === '#123456' && stored()[0].color === '#123456' && stored()[1].text === 'Target body', 'explicit Save applies source color only to edited note');
         if (new URLSearchParams(location.search).has('forceFailure')) check(false, 'intentional runner failure probe');
         output.dataset.status = 'passed';
         output.textContent = results.join('\n') + `\nALL PASSED (${results.length} assertions)`;

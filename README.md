@@ -33,7 +33,7 @@ Commit `a24a0ae` replaced the application with unused class scaffolding, removin
 | P1 | Drag destination preview | Planned in Step 16: drag-and-drop replaces Move up/down, with an empty dotted insertion placeholder and keyboard/touch support. |
 | P2 | Words/icons toggle | Planned in Step 15: a top-of-page preference switches block action labels between words and accessible icons. |
 | P1 | Popular tag filters | Implemented in Step 17: responsive frequent-tag buttons/counts, collapsible searchable overflow and a visible active tag; detected links are not filterable. |
-| P1 | Color reuse shortcut | Step 18 makes note HEX labels fill the note picker without entering edit mode. |
+| P1 | Color reuse shortcut | Implemented in Step 18: note HEX buttons fill the note picker without entering edit mode or saving. |
 | P1 | Compact interface | Step 14 now includes a smaller page/block title area and adjacent responsive control groups. |
 | P2 | Backup interface | Step 19 groups import/export with clear validation, preview counts and explicit replacement confirmation. |
 | P1 | Wrapping / separate blocks div | Implemented responsive wrapping and a separate saved-blocks section. |
@@ -52,7 +52,7 @@ In an editor that provides it, right-click `index.html` and choose **Open in Int
 
 ## Executable implementation plan
 
-To start a task, prompt **"Begin work on Step X in README.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7, 8, 10, 13 and 17 are **Complete**; Steps 4–6, 9, 11–12, 14–16 and 18–19 are **Not started**. Recommended order: **18 → 14 → 19 → 16 → 15 → 11 → 9 → 12 → 4**: simplify filtering, add color reuse, compact the interface and improve backups before the larger interaction changes. Steps 5–6 remain lower-priority optional work. The earlier regression fix and working features above are already implemented.
+To start a task, prompt **"Begin work on Step X in README.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7, 8, 10, 13, 17 and 18 are **Complete**; Steps 4–6, 9, 11–12, 14–16 and 19 are **Not started**. Recommended order: **14 → 19 → 16 → 15 → 11 → 9 → 12 → 4**: simplify filtering, add color reuse, compact the interface and improve backups before the larger interaction changes. Steps 5–6 remain lower-priority optional work. The earlier regression fix and working features above are already implemented.
 
 ### Instructions for the implementing agent
 
@@ -280,11 +280,15 @@ Validation: all 221 browser assertions and real downloaded JSON verification pas
 
 ### Step 18 — Reuse a note color by clicking its HEX label
 
-**Status:** Not started. **Priority:** P1. **Dependency:** Step 10.
+**Status:** Complete (2026-11-11). **Priority:** P1. **Dependency:** Step 10.
 
 Scope: make each note's displayed HEX value a compact native button. Clicking it fills the note color picker and HEX input with that value through their existing synchronization/validation path. Do not enter edit mode, alter the source note, save any note, copy text or change the page-background picker. If the editor already contains a draft or an active edit, update only its selected color; apply it to that note only on an explicit Add/Save.
 
 Acceptance: mouse, Enter and Space select the exact source color without scrolling or losing the current draft. Both picker/HEX fields update and any invalid draft HEX state clears. Stored blocks, tag filters, existing edit state and page background remain unchanged until the normal save action. Label remains readable, compact and explicitly named for assistive technology, for example `Use note color #123456`. Color-label clicks must not bubble into copying or initiate dragging.
+
+Implementation: each HEX value is a compact native button with a descriptive accessible name and tooltip. It uses the existing color synchronization path to fill the note picker/HEX field and clear invalid draft color input. It does not focus the editor, scroll, enter edit mode, change the background, or save anything. Pointer presses and drag events on the color button are isolated from block dragging; clicks are isolated from copying. Drafts and active edits apply the chosen color only through the normal Add/Save action.
+
+Validation: all 234 browser assertions and actual downloaded JSON verification passed. New checks cover native Enter/Space and clicks, picker synchronization, validation recovery, draft/filter/edit preservation, unchanged scroll and storage, no clipboard activity, drag prevention and explicit Add/Save behavior. Physical pointer dragging remains part of the existing manual release checks.
 
 ### Step 19 — Clearer import/export interface
 

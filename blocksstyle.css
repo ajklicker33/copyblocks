@@ -301,7 +301,8 @@ background-color: #666;
 @media (prefers-reduced-motion: reduce) { .text-block.is-editing::after { animation: none; } }
 .block-actions button { background: #f1f1f1; color: #333; border: 1px solid #777; border-radius: 4px; }
 .text-block :focus-visible { outline: 2px solid #222; outline-offset: 2px; box-shadow: 0 0 0 4px white; }
-.note-color-value { display: inline-block; margin-top: 8px; padding: 2px 6px; border-radius: 4px; font: .75rem monospace; background: #f1f1f1; color: #555; }
+.note-color-value { display: inline-block; min-height: 28px; margin-top: 8px; padding: 2px 6px; border: 1px solid #ccc; border-radius: 4px; font: .75rem monospace; background: #f1f1f1; color: #555; }
+.note-color-value:hover { background: #e5e5e5; border-color: #999; }
 .color-control { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; padding: 10px; border: 1px solid #ccc; border-radius: 6px; margin: 0 0 15px; }
 .color-control legend { padding: 0 4px; font-size: .9rem; }
 .color-control input[type="color"] { width: 44px; height: 32px; padding: 2px; cursor: pointer; }
