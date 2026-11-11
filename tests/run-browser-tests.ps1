@@ -69,8 +69,25 @@ try {
         } finally { $cancel.Dispose() }
     }
     do {
-        $evaluation = Invoke-PageCommand 'Runtime.evaluate' @{expression='JSON.stringify({status:document.querySelector("#results")?.dataset.status, html:document.documentElement.outerHTML})'; returnByValue=$true}
+        $evaluation = Invoke-PageCommand 'Runtime.evaluate' @{expression='JSON.stringify({status:document.querySelector("#results")?.dataset.status, html:document.documentElement.outerHTML, key:window.testKey, motion:window.testMotion})'; returnByValue=$true}
         $state = $evaluation.result.value | ConvertFrom-Json
+        if ($state.motion) {
+            if ($state.motion -notin @('reduce', 'no-preference')) { throw 'Unsupported motion preference.' }
+            $null = Invoke-PageCommand 'Emulation.setEmulatedMedia' @{features=@(@{name='prefers-reduced-motion'; value=$state.motion})}
+            $null = Invoke-PageCommand 'Runtime.evaluate' @{expression='window.testMotion = null'}
+        }
+        if ($state.key) {
+            if ($state.key -notin @('Enter', 'Space', 'Tab', 'Escape')) { throw 'Unsupported test key request.' }
+            $keyCode = if ($state.key -eq 'Enter') { 13 } elseif ($state.key -eq 'Tab') { 9 } elseif ($state.key -eq 'Escape') { 27 } else { 32 }
+            $keyValue = if ($state.key -eq 'Space') { ' ' } else { $state.key }
+            $null = Invoke-PageCommand 'Page.bringToFront' @{}
+            foreach ($keyType in @('keyDown', 'keyUp')) {
+                $keyParams = @{type=$keyType; key=$keyValue; code=$state.key; windowsVirtualKeyCode=$keyCode}
+                if ($keyType -eq 'keyDown' -and $state.key -in @('Enter', 'Space')) { $keyParams.text = if ($state.key -eq 'Enter') { "`r" } else { ' ' } }
+                $null = Invoke-PageCommand 'Input.dispatchKeyEvent' $keyParams
+            }
+            $null = Invoke-PageCommand 'Runtime.evaluate' @{expression='window.testKey = null'}
+        }
         if ($state.status -in @('passed', 'failed')) { break }
         if ([DateTime]::UtcNow -gt $deadline) { throw "Browser tests timed out. Last page: $($state.html)" }
         Start-Sleep -Milliseconds 100

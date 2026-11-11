@@ -1,18 +1,59 @@
-﻿'use strict';
+'use strict';
 
 document.addEventListener('DOMContentLoaded', () => {
     const $ = selector => document.querySelector(selector);
     const list = $('#text-blocks');
     const title = $('#block-title');
     const text = $('#new-text');
+    const tagInput = $('#block-tags');
     const add = $('#add-button');
     const filter = $('#tag-filter');
+    let activeFilter = '';
+    const compactFilters = window.matchMedia('(max-width: 640px)');
     let blocks = [];
     let editing = null;
-    let selectedColor = '#f8f8f8';
+    let selectedColor = '#F8F8F8';
+    let creatorColor = selectedColor;
+    let noteColorControl;
     let storageBlocked = false;
     let dragging = null;
+    const openQR = new WeakSet();
+    const qrViews = new WeakMap();
+    const chipTargets = new WeakMap();
     const notify = message => { $('#status').textContent = message; };
+    function opaqueHex(value, fallback) {
+        if (!value || !CSS.supports('color', value) || /currentcolor|var\(|inherit|initial|unset|revert|light-dark/i.test(value)) return fallback;
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
+        const context = canvas.getContext('2d');
+        context.fillStyle = value; context.fillRect(0, 0, 1, 1);
+        const rgba = context.getImageData(0, 0, 1, 1).data;
+        if (rgba[3] !== 255) return fallback;
+        return '#' + [...rgba].slice(0, 3).map(channel => channel.toString(16).padStart(2, '0')).join('').toUpperCase();
+    }
+    function foregroundFor(hex) {
+        const rgb = hex.slice(1).match(/../g).map(value => parseInt(value, 16) / 255)
+            .map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
+        return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722 > .179 ? '#000000' : '#FFFFFF';
+    }
+    function colorControl(prefix, initial, onChange) {
+        const picker = $(`#${prefix}-picker`), hex = $(`#${prefix}-hex`), error = $(`#${prefix}-error`);
+        function set(value) {
+            picker.value = value; hex.value = value.toUpperCase();
+            hex.setCustomValidity(''); hex.setAttribute('aria-invalid', 'false'); error.textContent = '';
+        }
+        picker.addEventListener('input', () => { set(picker.value); onChange(picker.value.toUpperCase()); });
+        hex.addEventListener('input', () => {
+            const match = hex.value.trim().match(/^#?([\da-f]{6})$/i);
+            if (!match) {
+                const message = 'Enter six HEX digits, for example #669966.';
+                hex.setCustomValidity(message); hex.setAttribute('aria-invalid', 'true'); error.textContent = message;
+                return;
+            }
+            const value = '#' + match[1].toUpperCase(); set(value); onChange(value);
+        });
+        set(initial);
+        return { set, valid: () => hex.reportValidity() };
+    }
     function read(key) {
         try { return localStorage.getItem(key); }
         catch { notify('Browser storage is unavailable. Export your blocks before closing.'); return null; }
@@ -21,27 +62,35 @@ document.addEventListener('DOMContentLoaded', () => {
         try { localStorage.setItem(key, value); return true; }
         catch { notify('Could not save in this browser. Export your blocks before closing.'); return false; }
     }
+    function normalizeTags(values) {
+        const unique = new Map();
+        for (const value of values.flatMap(value => value.split(','))) {
+            const label = value.trim().replace(/^(?:#\s*)+/, '').trim();
+            const key = label.toLowerCase();
+            if (label && !unique.has(key)) unique.set(key, label);
+        }
+        return [...unique.values()];
+    }
     function validate(data) {
         if (!Array.isArray(data) || data.some(b => !b || typeof b.text !== 'string' ||
             (b.title !== undefined && typeof b.title !== 'string') ||
-            (b.color !== undefined && typeof b.color !== 'string'))) throw new Error('Invalid backup');
-        return data.map(b => ({ title: b.title || 'Untitled', text: b.text,
-            color: b.color && CSS.supports('color', b.color) ? b.color : '#f8f8f8' }));
+            (b.color !== undefined && typeof b.color !== 'string') ||
+            (b.tags !== undefined && (!Array.isArray(b.tags) || b.tags.some(tag => typeof tag !== 'string'))))) throw new Error('Invalid backup');
+        return data.map(b => ({ title: b.title || 'Untitled', text: b.text, tags: normalizeTags(b.tags || []),
+            color: opaqueHex(b.color, '#F8F8F8') }));
     }
     function save() {
         if (storageBlocked) { notify('Existing saved data could not be read. Export this session or import a valid backup before replacing it.'); return; }
         write('textBlocks', JSON.stringify(blocks));
     }
-    const tags = block => [...new Set((`${block.title} ${block.text}`.match(/#[\p{L}\p{N}_-]+/gu) || []).map(t => t.toLowerCase()))];
+    const tags = block => block.tags.map(tag => tag.toLowerCase());
     function chooseColor(color) {
         selectedColor = color;
-        document.querySelectorAll('.color-dot').forEach(dot => {
-            dot.classList.toggle('selected', dot.dataset.color === color);
-            dot.setAttribute('aria-pressed', String(dot.dataset.color === color));
-        });
+        noteColorControl?.set(color);
     }
     function resetEditor() {
-        editing = null; title.value = ''; text.value = ''; add.textContent = 'Add Text Block';
+        chooseColor(editing ? creatorColor : selectedColor);
+        editing = null; title.value = ''; text.value = ''; tagInput.value = ''; add.textContent = 'Add Text Block';
         $('#cancel-edit').hidden = true;
         updateDetectedLinks();
     }
@@ -109,33 +158,123 @@ document.addEventListener('DOMContentLoaded', () => {
         preview.hidden = !urls.length;
         $('#no-detected-links').hidden = !!urls.length;
     }
-    function render() {
-        const currentFilter = filter.value;
-        const blockLinks = new Map(blocks.map(block => [block, linksIn(block.text)]));
-        filter.replaceChildren(new Option('All blocks', ''));
-        for (const [label, values] of [
-            ['Hashtags', [...new Set(blocks.flatMap(tags))].sort()],
-            ['Detected links', [...new Set([...blockLinks.values()].flat())].sort()]
-        ]) {
-            if (!values.length) continue;
-            const group = document.createElement('optgroup'); group.label = label;
-            values.forEach(value => group.append(new Option(value, value)));
-            filter.append(group);
+    function qrView(block) {
+        const cached = qrViews.get(block);
+        if (cached && cached.text === block.text && cached.title === block.title) return cached.element;
+        const element = document.createElement('div'); element.className = 'qr-view';
+        try {
+            element.append(window.CopyBlocksQR.createCanvas(block.text, block.title));
+            const caption = document.createElement('p');
+            caption.textContent = 'Scan to read the full block text.';
+            element.append(caption);
+        } catch (error) {
+            const message = document.createElement('p'); message.className = 'qr-error';
+            message.setAttribute('role', 'status');
+            message.textContent = error.message || 'Could not generate this QR code. Copying still works.';
+            element.append(message);
         }
-        filter.value = [...filter.options].some(o => o.value === currentFilter) ? currentFilter : '';
+        qrViews.set(block, { text: block.text, title: block.title, element });
+        return element;
+    }
+    function renderTagFilters() {
+        const focusedKey = document.activeElement.dataset?.tagFilter;
+        const counts = new Map();
+        blocks.forEach(block => block.tags.forEach(label => {
+            const key = label.toLowerCase();
+            if (!counts.has(key)) counts.set(key, { key, label, count: 0 });
+            counts.get(key).count++;
+        }));
+        const ordered = [...counts.values()].sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+        if (activeFilter && !counts.has(activeFilter.slice(4))) activeFilter = '';
+        filter.dataset.activeTag = activeFilter;
+        const limit = compactFilters.matches ? 3 : 5;
+        const top = ordered.slice(0, limit);
+        const remainder = ordered.slice(limit);
+        function tagButton(tag) {
+            const value = 'tag:' + tag.key;
+            const control = button('', () => {
+                control.focus({ preventScroll: true });
+                activeFilter = activeFilter === value ? '' : value;
+                render();
+            });
+            control.className = 'filter-tag'; control.dataset.tagFilter = value;
+            control.title = `${tag.label} (${tag.count})`;
+            control.setAttribute('aria-pressed', String(activeFilter === value));
+            control.setAttribute('aria-label', `${tag.label}, ${tag.count} ${tag.count === 1 ? 'note' : 'notes'}`);
+            const label = document.createElement('span'); label.className = 'filter-tag-label'; label.textContent = tag.label;
+            const count = document.createElement('span'); count.className = 'tag-count'; count.textContent = tag.count;
+            control.append(label, count);
+            return control;
+        }
+        $('#popular-tags').replaceChildren(...top.map(tagButton));
+        const extra = counts.get(activeFilter.slice(4));
+        $('#active-tag').replaceChildren(...(extra && !top.includes(extra) ? [tagButton(extra)] : []));
+        $('#all-tags').setAttribute('aria-pressed', String(!activeFilter));
+        $('#all-tags').textContent = `All (${blocks.length})`;
+        const details = $('#more-tags');
+        details.hidden = !remainder.length;
+        if (details.hidden) {
+            if (details.contains(document.activeElement)) $('#all-tags').focus({ preventScroll: true });
+            details.open = false;
+        }
+        $('#more-tags-label').textContent = `More tags (${remainder.length})`;
+        const search = $('#tag-search');
+        if (details.hidden) search.value = '';
+        const query = search.value.trim().toLowerCase();
+        const visible = (query ? ordered : remainder).filter(tag => tag.key.includes(query));
+        $('#more-tag-list').replaceChildren(...visible.map(tagButton));
+        $('#tag-search-empty').hidden = !!visible.length;
+        if (focusedKey !== undefined) {
+            const replacement = [...filter.querySelectorAll('[data-tag-filter]')].find(control =>
+                control.dataset.tagFilter === focusedKey && (!control.closest('details') || details.open));
+            (replacement || $('#all-tags')).focus({ preventScroll: true });
+        }
+    }
+    function render() {
+        const focusedChip = chipTargets.get(document.activeElement);
+        let restoredChip = null;
+        const blockLinks = new Map(blocks.map(block => [block, linksIn(block.text)]));
+        renderTagFilters();
+        const matchesFilter = block => !activeFilter || tags(block).includes(activeFilter.slice(4));
+        const matchingCount = blocks.filter(matchesFilter).length;
+        const editingException = editing && !matchesFilter(editing);
+        const displayBlocks = blocks.map((block, index) => ({ block, index }));
+        const editIndex = displayBlocks.findIndex(entry => entry.block === editing);
+        if (editIndex >= 0) displayBlocks.unshift(...displayBlocks.splice(editIndex, 1));
         list.replaceChildren();
-        blocks.forEach((block, index) => {
-            if (filter.value && !tags(block).includes(filter.value) && !blockLinks.get(block).includes(filter.value)) return;
+        displayBlocks.forEach(({ block, index }) => {
+            if (block !== editing && !matchesFilter(block)) return;
             const card = document.createElement('article'); card.className = 'text-block';
-            card.style.backgroundColor = block.color; card.draggable = !filter.value;
+            card.style.backgroundColor = block.color; card.draggable = !activeFilter && !editing;
+            card.style.color = foregroundFor(block.color);
             card.dataset.index = index;
+            if (block === editing) {
+                card.classList.add('is-editing');
+                card.setAttribute('aria-label', `${block.title} — Editing`);
+                const badge = button(editingException ? 'Editing — shown outside the current filter' : 'Editing', () => {
+                    add.click();
+                    if (!editing) text.focus({ preventScroll: true });
+                });
+                badge.className = 'editing-badge'; badge.dataset.action = 'save';
+                badge.setAttribute('aria-label', `Save changes to ${block.title}`);
+                badge.title = 'Save changes';
+                card.append(badge);
+            }
             const heading = document.createElement('h2'); heading.className = 'block-title'; heading.textContent = block.title;
             const content = document.createElement('div'); content.className = 'text-content'; content.textContent = block.text;
-            const actions = document.createElement('div'); actions.className = 'block-actions';
+            const actions = document.createElement('div'); actions.className = 'block-actions block-top-actions';
+            const footer = document.createElement('div'); footer.className = 'block-footer';
+            const codeActions = document.createElement('div'); codeActions.className = 'block-actions block-code-actions';
+            const moveActions = document.createElement('div'); moveActions.className = 'block-actions block-move-actions';
+            footer.append(codeActions, moveActions);
             actions.append(button('Copy', () => copy(block.text)), button('Edit', () => {
+                if (!editing) creatorColor = selectedColor;
                 editing = block; title.value = block.title; text.value = block.text; chooseColor(block.color);
+                tagInput.value = block.tags.join(', ');
                 updateDetectedLinks();
-                add.textContent = 'Save Changes'; $('#cancel-edit').hidden = false; title.focus();
+                dragging = null;
+                add.textContent = 'Save Changes'; $('#cancel-edit').hidden = false;
+                render(); text.focus({ preventScroll: true });
             }), button('Delete', () => {
                 if (!confirm(`Delete "${block.title}"?`)) return;
                 if (editing === block) resetEditor();
@@ -143,13 +282,44 @@ document.addEventListener('DOMContentLoaded', () => {
             }));
             for (const [label, offset] of [['Move up', -1], ['Move down', 1]]) {
                 const move = button(label, () => {
+                    if (editing || activeFilter) return;
                     [blocks[index], blocks[index + offset]] = [blocks[index + offset], blocks[index]];
                     save(); render();
                 });
-                move.disabled = !!filter.value || index + offset < 0 || index + offset >= blocks.length;
-                actions.append(move);
+                move.disabled = !!editing || !!activeFilter || index + offset < 0 || index + offset >= blocks.length;
+                if (editing) move.title = 'Finish editing before reordering blocks.';
+                moveActions.append(move);
             }
+            card.prepend(actions);
             card.append(heading, content);
+            const colorLabel = button(block.color.toUpperCase(), () => chooseColor(block.color));
+            colorLabel.className = 'note-color-value'; colorLabel.draggable = false;
+            colorLabel.setAttribute('aria-label', `Use note color ${block.color.toUpperCase()}`);
+            colorLabel.title = 'Use this color for the note being created or edited';
+            colorLabel.addEventListener('dragstart', event => { event.preventDefault(); event.stopPropagation(); });
+            card.append(colorLabel);
+            if (block.tags.length) {
+                const chips = document.createElement('ul'); chips.className = 'block-tags';
+                chips.setAttribute('aria-label', 'Tags');
+                block.tags.forEach(tag => {
+                    const item = document.createElement('li');
+                    const key = tag.toLowerCase();
+                    const value = 'tag:' + key;
+                    const chip = button(tag, () => {
+                        chip.focus({ preventScroll: true });
+                        activeFilter = activeFilter === value ? '' : value;
+                        render();
+                    });
+                    chip.className = 'tag-chip'; chip.draggable = false;
+                    chip.setAttribute('aria-label', `Filter by tag ${tag}`);
+                    chip.setAttribute('aria-pressed', String(activeFilter === value));
+                    chipTargets.set(chip, { block, key });
+                    chip.addEventListener('dragstart', event => { event.preventDefault(); event.stopPropagation(); });
+                    if (focusedChip?.block === block && focusedChip.key === key) restoredChip = chip;
+                    item.append(chip); chips.append(item);
+                });
+                card.append(chips);
+            }
             const urls = blockLinks.get(block);
             if (urls.length) {
                 const links = document.createElement('div'); links.className = 'block-links';
@@ -157,42 +327,69 @@ document.addEventListener('DOMContentLoaded', () => {
                 links.append(label, linkList(urls));
                 card.append(links);
             }
-            card.append(actions);
+            card.append(footer);
+            const qrButton = button(openQR.has(block) ? 'Hide QR' : 'Show QR', () => {
+                if (openQR.has(block)) {
+                    openQR.delete(block); qrViews.delete(block);
+                    card.querySelector('.qr-view')?.remove();
+                } else {
+                    openQR.add(block); card.insertBefore(qrView(block), footer);
+                }
+                qrButton.textContent = openQR.has(block) ? 'Hide QR' : 'Show QR';
+                qrButton.setAttribute('aria-expanded', String(openQR.has(block)));
+            });
+            qrButton.setAttribute('aria-expanded', String(openQR.has(block)));
+            codeActions.append(qrButton);
+            if (openQR.has(block)) card.insertBefore(qrView(block), footer);
             card.addEventListener('click', () => copy(block.text));
+            // A draggable ancestor must not turn a chip press into a card drag.
+            card.addEventListener('pointerdown', event => {
+                card.draggable = !editing && !activeFilter && !event.target.closest('.tag-chip, .note-color-value');
+            });
+            for (const eventName of ['pointerup', 'pointercancel']) {
+                card.addEventListener(eventName, () => { card.draggable = !editing && !activeFilter; });
+            }
             card.addEventListener('dragstart', event => {
+                if (!card.draggable) { event.preventDefault(); return; }
                 dragging = block; card.classList.add('dragging'); event.dataTransfer.setData('text/plain', String(index));
             });
             card.addEventListener('dragend', () => { dragging = null; card.classList.remove('dragging'); });
-            card.addEventListener('dragover', event => { if (dragging && !filter.value) event.preventDefault(); });
+            card.addEventListener('dragover', event => { if (dragging && !editing && !activeFilter) event.preventDefault(); });
             card.addEventListener('drop', event => {
                 event.preventDefault();
-                if (!dragging || dragging === block || filter.value) return;
+                if (!dragging || dragging === block || editing || activeFilter) return;
                 const from = blocks.indexOf(dragging);
                 blocks.splice(from, 1); blocks.splice(index, 0, dragging); dragging = null; save(); render();
             });
             list.append(card);
         });
         $('#empty-state').hidden = list.children.length > 0;
-        $('#block-count').textContent = `${list.children.length} of ${blocks.length} blocks`;
+        $('#block-count').textContent = `${matchingCount} of ${blocks.length} blocks${editingException ? ' match the filter (+1 editing block)' : ''}`;
+        if (focusedChip) (restoredChip || $('#all-tags')).focus({ preventScroll: true });
     }
     add.addEventListener('click', () => {
+        if (!noteColorControl.valid()) return;
         if (!text.value.trim()) { notify('Enter some text first.'); text.focus(); return; }
-        const value = { title: title.value.trim() || 'Untitled', text: text.value, color: selectedColor };
+        const value = { title: title.value.trim() || 'Untitled', text: text.value, tags: normalizeTags([tagInput.value]), color: selectedColor };
         if (editing) Object.assign(editing, value); else blocks.push(value);
         resetEditor(); save(); render();
     });
-    $('#cancel-edit').addEventListener('click', resetEditor);
+    $('#cancel-edit').addEventListener('click', () => { resetEditor(); render(); title.focus(); });
     text.addEventListener('input', updateDetectedLinks);
-    filter.addEventListener('change', render);
-    document.querySelectorAll('.color-dot').forEach(dot => {
-        dot.setAttribute('role', 'button'); dot.tabIndex = 0; dot.setAttribute('aria-label', dot.title);
-        dot.addEventListener('click', () => chooseColor(dot.dataset.color));
+    $('#all-tags').addEventListener('click', () => { activeFilter = ''; render(); });
+    $('#tag-search').addEventListener('input', renderTagFilters);
+    compactFilters.addEventListener('change', render);
+    noteColorControl = colorControl('note-color', '#F8F8F8', chooseColor);
+    const backgroundColor = opaqueHex(read('preferredColor'), '#F0F0F0');
+    colorControl('background-color', backgroundColor, color => {
+        document.body.style.backgroundColor = color; write('preferredColor', color);
     });
+    document.body.style.backgroundColor = backgroundColor;
     function collapse() {
         document.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('show'));
-        $('#layout-button').setAttribute('aria-expanded', 'false'); $('#color-button').setAttribute('aria-expanded', 'false');
+        $('#layout-button').setAttribute('aria-expanded', 'false');
     }
-    for (const kind of ['layout', 'color']) {
+    for (const kind of ['layout']) {
         const trigger = $(`#${kind}-button`); const menu = $(`.${kind}-dropdown`);
         trigger.setAttribute('aria-expanded', 'false');
         trigger.addEventListener('click', event => {
@@ -203,32 +400,76 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('click', collapse);
     document.addEventListener('keydown', event => {
         if (event.key === 'Escape') collapse();
-        if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('.color-dot, .layout-option, .color-option')) {
+        if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('.layout-option')) {
             event.preventDefault(); event.target.click();
         }
     });
-    document.querySelectorAll('.layout-option, .color-option').forEach(option => { option.tabIndex = 0; option.setAttribute('role', 'button'); });
+    document.querySelectorAll('.layout-option').forEach(option => { option.tabIndex = 0; option.setAttribute('role', 'button'); });
     document.querySelectorAll('.layout-option').forEach(option => option.addEventListener('click', () => {
         list.style.setProperty('--columns', option.dataset.columns); write('preferredColumns', option.dataset.columns);
     }));
-    document.querySelectorAll('.color-option').forEach(option => option.addEventListener('click', () => {
-        document.body.style.backgroundColor = option.dataset.color; write('preferredColor', option.dataset.color);
-    }));
+    const backupDialog = $('#backups-dialog');
+    const backupStatus = message => { $('#backup-status').textContent = message; };
+    let pendingImport = null;
+    let importVersion = 0;
+    function cancelImport() {
+        importVersion++;
+        pendingImport = null;
+        $('#import-preview').hidden = true;
+        $('#file-input').value = '';
+        $('#replace-import').disabled = true;
+    }
+    $('#backups-button').addEventListener('click', () => {
+        cancelImport(); backupStatus(''); backupDialog.showModal(); $('#export-button').focus();
+    });
+    $('#close-backups').addEventListener('click', () => backupDialog.close());
+    backupDialog.addEventListener('close', () => {
+        if (backupDialog.open) return;
+        cancelImport(); $('#backups-button').focus({ preventScroll: true });
+    });
+    backupDialog.addEventListener('cancel', () => cancelImport());
+    $('#cancel-import').addEventListener('click', () => {
+        cancelImport(); backupStatus('Import cancelled. Notes and draft kept.'); $('#import-button').focus();
+    });
     $('#export-button').addEventListener('click', () => {
+        try {
         const url = URL.createObjectURL(new Blob([JSON.stringify(blocks, null, 2)], { type: 'application/json' }));
         const link = document.createElement('a'); link.href = url; link.download = 'text-blocks-backup.json';
         document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+        backupStatus(`Download requested for ${blocks.length} saved notes. Unsaved drafts are excluded.`);
+        } catch { backupStatus('Export failed. Please try again.'); }
     });
     $('#import-button').addEventListener('click', () => $('#file-input').click());
     $('#file-input').addEventListener('change', async event => {
         const file = event.target.files[0];
         if (!file) return;
+        cancelImport();
+        const version = importVersion;
+        backupStatus('Reading backup…');
         try {
             const imported = validate(JSON.parse(await file.text()));
-            if ((blocks.length || storageBlocked) && !confirm('Replace all blocks with this backup? Export first to keep your current blocks.')) return;
-            blocks = imported; storageBlocked = false; resetEditor(); save(); render();
-        } catch { notify('Invalid backup. Choose a JSON array of blocks with text, optional title and color. Current blocks were kept.'); }
-        finally { event.target.value = ''; }
+            if (version !== importVersion) return;
+            pendingImport = imported;
+            $('#import-summary').textContent = `${file.name}: ${imported.length} valid notes. Replaces ${blocks.length} current notes${storageBlocked ? ' and unreadable saved data' : ''}.`;
+            $('#import-preview').hidden = false;
+            $('#replace-import').disabled = false;
+            backupStatus('Backup validated. Review before replacing.');
+            $('#cancel-import').focus();
+        } catch {
+            if (version !== importVersion) return;
+            backupStatus('Invalid backup. Expected a JSON array of notes with text, optional title and color, and optional tags as an array of strings. Notes and draft kept.');
+            $('#import-button').focus();
+        }
+    });
+    $('#replace-import').addEventListener('click', () => {
+        if (!pendingImport) return;
+        if (!write('textBlocks', JSON.stringify(pendingImport))) {
+            backupStatus('Could not save the backup in this browser. Existing notes and draft were kept. Export current notes, or free storage and try Replace again.');
+            return;
+        }
+        blocks = pendingImport; storageBlocked = false; resetEditor(); render(); cancelImport();
+        backupStatus(`Imported ${blocks.length} notes.`); notify(`Imported ${blocks.length} notes.`);
+        $('#import-button').focus();
     });
     $('#clear-button').addEventListener('click', () => {
         if (!confirm('Delete all text blocks? Export a backup first to keep them.')) return;
@@ -241,7 +482,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const columns = read('preferredColumns');
     if (['1', '2', '3'].includes(columns)) list.style.setProperty('--columns', columns);
-    const background = read('preferredColor');
-    if (background && CSS.supports('color', background)) document.body.style.backgroundColor = background;
     chooseColor(selectedColor); render();
 });
