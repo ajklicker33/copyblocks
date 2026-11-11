@@ -69,8 +69,13 @@ try {
         } finally { $cancel.Dispose() }
     }
     do {
-        $evaluation = Invoke-PageCommand 'Runtime.evaluate' @{expression='JSON.stringify({status:document.querySelector("#results")?.dataset.status, html:document.documentElement.outerHTML, key:window.testKey})'; returnByValue=$true}
+        $evaluation = Invoke-PageCommand 'Runtime.evaluate' @{expression='JSON.stringify({status:document.querySelector("#results")?.dataset.status, html:document.documentElement.outerHTML, key:window.testKey, motion:window.testMotion})'; returnByValue=$true}
         $state = $evaluation.result.value | ConvertFrom-Json
+        if ($state.motion) {
+            if ($state.motion -notin @('reduce', 'no-preference')) { throw 'Unsupported motion preference.' }
+            $null = Invoke-PageCommand 'Emulation.setEmulatedMedia' @{features=@(@{name='prefers-reduced-motion'; value=$state.motion})}
+            $null = Invoke-PageCommand 'Runtime.evaluate' @{expression='window.testMotion = null'}
+        }
         if ($state.key) {
             if ($state.key -notin @('Enter', 'Space')) { throw 'Unsupported test key request.' }
             $keyCode = if ($state.key -eq 'Enter') { 13 } else { 32 }

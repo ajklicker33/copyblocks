@@ -4,7 +4,7 @@ A local-first text clipboard. Open `index.html` in a browser; no build or extern
 
 ## Working features
 
-- Add, copy, edit, delete and arrange text blocks, including emoji and multiline text.
+- Add, copy, edit, delete and arrange text blocks, including emoji and multiline text. The edited block appears first with a dotted highlight while retaining its saved order.
 - Drag blocks onto another block to reorder, or use Move up / Move down.
 - Export all blocks as JSON and restore validated backups. Imports replace the collection after confirmation; invalid backups leave existing blocks untouched.
 - Existing `textBlocks`, `preferredColumns` and `preferredColor` storage remains compatible.
@@ -28,9 +28,14 @@ Commit `a24a0ae` replaced the application with unused class scaffolding, removin
 | P1 | Tag filtering | Implemented in Step 7: separate tag metadata, safe chips and case-insensitive filtering. Legacy body/title hashtags remain unchanged and are not inferred as tags. |
 | P1 | Tag chip appearance and interaction | Implemented in Step 8: smaller, muted button chips toggle the matching tag filter with a checkmark and keyboard support. |
 | P1 | Color picker and color value | Implemented in Step 10: native note/background pickers, synchronized HEX fields, per-note color labels and contrast-aware text. |
-| P1 | Editing visibility | Planned in Step 13: temporarily show the edited block first with an animated dotted outline. |
-| P1 | Block action placement | Planned in Step 14: evenly spaced top Copy/Edit/Delete controls, bottom movement controls, and code controls immediately above movement. |
+| P1 | Editing visibility | Implemented in Step 13: temporarily show the edited block first with an Editing badge and animated dotted outline; saved order stays unchanged. |
+| P1 | Block action placement | Planned in Step 14: evenly spaced top Copy/Edit/Delete controls and bottom code controls. Step 16 replaces movement buttons with drag-and-drop. |
+| P1 | Drag destination preview | Planned in Step 16: drag-and-drop replaces Move up/down, with an empty dotted insertion placeholder and keyboard/touch support. |
 | P2 | Words/icons toggle | Planned in Step 15: a top-of-page preference switches block action labels between words and accessible icons. |
+| P1 | Popular tag filters | Step 17 replaces the dropdown with four most-used tag buttons/counts; detected links cease to be filterable. |
+| P1 | Color reuse shortcut | Step 18 makes note HEX labels fill the note picker without entering edit mode. |
+| P1 | Compact interface | Step 14 now includes a smaller page/block title area and adjacent responsive control groups. |
+| P2 | Backup interface | Step 19 groups import/export with clear validation, preview counts and explicit replacement confirmation. |
 | P1 | Wrapping / separate blocks div | Implemented responsive wrapping and a separate saved-blocks section. |
 | P2 | Detect links | Implemented in Step 2: detected-link lists, live editor preview and URL filtering preserve card-click copying. |
 | P2 | Barcode / QR | QR implemented in Step 3 with a bundled encoder and independent decode tests. Linear barcodes remain deferred pending scanner/symbology requirements. Veto case normalization: exact text is preserved. |
@@ -47,7 +52,7 @@ In an editor that provides it, right-click `index.html` and choose **Open in Int
 
 ## Executable implementation plan
 
-To start a task, prompt **"Begin work on Step X in README.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7, 8 and 10 are **Complete**; Steps 4–6, 9 and 11–15 are **Not started**. Recommended order: **13 → 14 → 15 → 11 → 9 → 12 → 4**: improve edit visibility and action placement, add the label preference, then expand creation options and code generation. Steps 5–6 remain lower-priority optional work. The earlier regression fix and working features above are already implemented.
+To start a task, prompt **"Begin work on Step X in README.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7, 8, 10 and 13 are **Complete**; Steps 4–6, 9, 11–12 and 14–19 are **Not started**. Recommended order: **17 → 18 → 14 → 19 → 16 → 15 → 11 → 9 → 12 → 4**: simplify filtering, add color reuse, compact the interface and improve backups before the larger interaction changes. Steps 5–6 remain lower-priority optional work. The earlier regression fix and working features above are already implemented.
 
 ### Instructions for the implementing agent
 
@@ -195,9 +200,9 @@ Scope: add labeled **Generate QR code** and **Detect links** checkboxes to the b
 
 When Generate QR code is checked, display the code alongside the body immediately after saving and by default after reload or re-render. Keep full text visible and unchanged. Unchecked notes retain the existing on-demand Show QR control. A per-card Hide QR action temporarily hides the view for the current session; the editor checkbox controls the saved default. Preserve temporary visibility choices during unrelated renders and reset them when the saved option changes. Generate codes only for rendered notes; cache unchanged views and invalidate them when payload/settings change. If Step 9 exists, apply the default to full-text and numbered per-link QR views.
 
-Detect links controls live preview, saved link lists, link-filter participation and any per-link QR views. Turning it off never removes URLs from the body or disables full-text QR/copy. A selected URL filter that no longer has matches resets to All blocks. The control is useful because URL extraction is optional interpretation of text; explicit Tags remain independent. Do not add automatic hashtag extraction, case conversion, trimming or generic parsing switches. Add future parsing controls only when a concrete feature and its behavior are defined.
+Detect links controls live preview, saved link lists and any per-link QR views. Step 17 removes link filtering entirely; do not restore it here. Turning it off never removes URLs from the body or disables full-text QR/copy. Tag filtering remains independent of link detection. The control is useful because URL extraction is optional interpretation of text; explicit Tags remain independent. Do not add automatic hashtag extraction, case conversion, trimming or generic parsing switches. Add future parsing controls only when a concrete feature and its behavior are defined.
 
-Acceptance: options survive edit/cancel/reload/export/import and legacy records retain existing behavior. Checked QR appears by default with the correct decoded body; unchecked QR remains on demand. Detect links can be turned off/on without changing text, metadata tags or copied/encoded content. Test option combinations, malformed imports, temporary Show/Hide behavior, filtered collections, stale selected links, unsupported/oversized QR payloads and narrow screens. Checkboxes must be keyboard accessible and must not accidentally copy a block.
+Acceptance: options survive edit/cancel/reload/export/import and legacy records retain existing behavior. Checked QR appears by default with the correct decoded body; unchecked QR remains on demand. Detect links can be turned off/on without changing text, metadata tags or copied/encoded content. Test option combinations, malformed imports, temporary Show/Hide behavior, filtered collections, tag-filter preservation, unsupported/oversized QR payloads and narrow screens. Checkboxes must be keyboard accessible and must not accidentally copy a block.
 
 ### Step 12 — Barcode generation with default display
 
@@ -211,7 +216,7 @@ Acceptance: an independent decoder recovers exact supported payloads from render
 
 ### Step 13 — Bring the edited block to the top and highlight it
 
-**Status:** Not started. **Priority:** P1.
+**Status:** Complete (2026-11-10). **Priority:** P1.
 
 Scope: while editing, temporarily show the existing block first in the saved-block section, immediately below the creator/editor, with a moving dotted outline. Mark it visibly as **Editing** and expose that state to assistive technology. Use a lightweight CSS animation that does not shift layout or interfere with buttons, links, focus indicators or text selection. Honor `prefers-reduced-motion` with a static dotted outline.
 
@@ -219,25 +224,73 @@ The promotion is display-only: preserve the underlying saved order and export or
 
 Acceptance: only one block is marked Editing; it remains discoverable during filtering and after unrelated renders. Save/Cancel, switching edits, deletion and imports clear or transfer the state correctly. Saved/exported order never changes merely from entering/exiting edit mode. The outline stays visible on all note colors and at 320px, has a reduced-motion fallback, and does not disrupt keyboard focus or existing QR/tag/link behavior. Edit highlighting and temporary placement are never persisted in backups.
 
-### Step 14 — Arrange block actions along top and bottom borders
+Implementation: the renderer promotes the existing edited record in a temporary display sequence while all mutations and exports retain the original array indices/order. An Editing badge and two-tone moving dotted outline identify the block; reduced-motion mode uses the same static outline. Filter exceptions remain first with an explicit label and a separate match/exception count. Movement buttons and drag/drop are disabled throughout editing. Save, Cancel, switching edits, deletion, clearing and confirmed replacement imports restore or transfer the state, with Edit focusing the text entry without scrolling the page; Cancel returns focus to the title field.
+
+Validation: all 198 browser assertions plus actual downloaded JSON verification passed. New checks cover display versus saved/export order, one accessible editing marker, focus, visible QR/link preservation, reorder prevention, filtered exceptions/counts, save/cancel/switch cleanup, deletion/clear/import cleanup, 320px fit and native browser reduced-motion emulation. The outline ignores pointer events and adds no layout dimensions. Animated styling is implemented; full visual review on physical devices remains part of manual release checks.
+
+### Step 14 — Compact layout and block action placement
 
 **Status:** Not started. **Priority:** P1.
 
-Scope: place **Copy**, **Edit** and **Delete** in an evenly spaced row aligned to the top border of each block. Reserve space so the controls do not overlap the title, the editing outline or content. Place **Move up** and **Move down** in an evenly spaced row at the bottom of the block. Put the **Show/Hide QR** and, when implemented, **Show/Hide barcode** controls in a separate row immediately above the movement row. Keep the movement row anchored at the bottom even when neighboring cards have different content heights.
+Layout refinement: reduce the page title/header height and block-title padding without truncating meaningful titles. Use adjacent, aligned controls for related fields (title/tags where space permits, color/HEX, action groups and backup controls) rather than separate full-width stacked panels. Keep the body textarea comfortably usable. Use responsive grid/flex layouts: compact rows on desktop, sensible wrapping/stacking at narrow widths, visible labels and a tab order matching the visual order. Do not shrink interactive hit areas merely to save space. Coordinate the backup entry point with Step 19.
 
-Rendered code images remain content above these bottom control rows; opening a code must not move movement controls into the middle of the block. Do not add a nonfunctional barcode control before Step 12. When barcode support arrives, use the same code-control row. Maintain equal spacing for whichever code controls exist. Preserve all current confirmation, filtering, editing, copy and Show/Hide behavior.
+Scope: place **Copy**, **Edit** and **Delete** in an evenly spaced row aligned to the top border of each block. Reserve space so the controls do not overlap the title, the editing outline or content. Place **Show/Hide QR** and, when implemented, **Show/Hide barcode** in an evenly spaced row anchored at the bottom of the block, even when neighboring cards have different content heights. The newer Step 16 request supersedes the previous Move up/down row: use drag-and-drop with a destination placeholder instead. If Step 16 is not yet complete, retain existing movement controls temporarily rather than removing the keyboard reordering path.
 
-Acceptance: inspect short/long text, titles, tags, multiple links, visible QR images and error messages at mobile and desktop widths. Top and bottom controls remain evenly distributed without overflow, clipped focus rings or title overlap. Keyboard tab order follows the visual order; control clicks never trigger the card's copy handler. Existing disabled movement rules, including editing rules if Step 13 is present, remain effective. Test with the words/icons preference if Step 15 is already implemented.
+Rendered code images remain content above the bottom code-control row; opening a code must not move those controls into the middle of the block. Do not add a nonfunctional barcode control before Step 12. When barcode support arrives, use the same code-control row. Maintain equal spacing for whichever code controls exist. Preserve all current confirmation, filtering, editing, copy and Show/Hide behavior.
+
+Acceptance: verify reduced header/title whitespace and adjacent control groups without horizontal overflow at 320px or overlap at 200% zoom. Inspect short/long text, titles, tags, multiple links, visible QR images and error messages at mobile and desktop widths. Top and bottom controls remain evenly distributed without overflow, clipped focus rings or title overlap. Keyboard tab order follows the visual order; control clicks never trigger the card's copy handler. Existing disabled movement rules, including editing rules if Step 13 is present, remain effective. Test with the words/icons preference if Step 15 is already implemented.
 
 ### Step 15 — Toggle block actions between words and icons
 
 **Status:** Not started. **Priority:** P2. **Dependency:** Step 14.
 
-Scope: add a clearly labeled button at the top of the page that toggles block action controls between words and icons. Default to words and persist the preference in its own local-storage setting. Apply it to Copy, Edit, Delete, Move up/down and Show/Hide QR/barcode when available. The toggle itself retains a readable text label describing the available switch, such as **Use icons** / **Use words**; do not turn it into an unexplained icon.
+Scope: add a clearly labeled button at the top of the page that toggles block action controls between words and icons. Default to words and persist the preference in its own local-storage setting. Apply it to Copy, Edit, Delete, the Editing/Save control and Show/Hide QR/barcode when available. The Editing control becomes a Save icon in icon mode, retaining its save handler, validation, accessible Save changes name and tooltip. Do not restore Move up/down controls removed by Step 16; its drag handle keeps a consistent recognizable appearance and accessible name in both modes. The toggle itself retains a readable text label describing the available switch, such as **Use icons** / **Use words**; do not turn it into an unexplained icon.
 
 Use small local SVG icons with no network dependency. Keep native button semantics and meaningful accessible names in both modes; SVG decoration is hidden from assistive technology. Provide descriptive hover/focus tooltips for icon-only controls. Keep disabled states, destructive-action distinctions, pressed/expanded state and Show-versus-Hide meaning clear. The preference changes presentation only, never action behavior, note data, copied text, code payloads or backup format.
 
 Acceptance: toggling updates existing blocks immediately, newly added/imported blocks use the selected mode, and the preference survives reload independently of note content. Switching during editing, filtering or QR display preserves those states and focus. Test mouse and keyboard activation, accessible names, tooltips, disabled movement, Show/Hide transitions, narrow layouts and unavailable storage. Step 12 must extend this presentation to barcode controls when they become available.
+
+### Step 16 — Drag-and-drop with a dotted destination placeholder
+
+**Status:** Not started. **Priority:** P1. Supersedes the Move up/down button layout previously requested in Step 14.
+
+Scope: replace Move up / Move down buttons with drag-and-drop reordering and a clear drag handle on each block. While moving a block, insert an empty dotted-outline placeholder at the exact grid position where it will land on release. Size the placeholder to the dragged block, keep a distinct dragged-block preview, and update the insertion target as the pointer crosses neighboring cards. The placeholder must occupy layout space rather than merely decorating the hovered card. Distinguish its static empty dotted outline from Step 13's animated outline on the populated edited block.
+
+Use insertion positions, not swaps, with consistent before/after behavior in one-, two- and three-column layouts. Support the first and last positions, unequal card heights, responsive row wrapping and scrolling near viewport edges. Save the new order only after a successful drop; cancel, Escape, pointer cancellation, releasing outside a valid destination or dropping in the original position must preserve the prior order and remove all previews/placeholders. Never persist placeholder state or duplicate the dragged block in storage/export. Freeze reordering while filtered or editing, with an understandable disabled handle state.
+
+Accessibility and touch: use a focusable drag handle with an accessible name and concise instructions. Space/Enter on the handle picks up a block; arrow keys move its prospective position with the same dotted placeholder; Space/Enter drops and Escape cancels. Announce pickup, destination and completion via a live region, and retain focus on the moved handle. Support touch dragging through the handle while preserving normal page scrolling elsewhere. Text selection, links, chips, action buttons and QR controls must not start a drag. A completed or cancelled drag must not trigger the block's copy handler.
+
+Acceptance: exercise real pointer dragging plus keyboard and touch paths, including movement in both directions, across rows, to first/last positions, past unequal-height blocks and during edge scrolling. Verify the dotted placeholder predicts the final position exactly. Reload/export must reflect only committed drops; cancellations and invalid drops leave the saved order unchanged. Test filtered/editing restrictions, deleted/imported collections, interruption cleanup, native keyboard focus, 320px layouts, no accidental copying and preservation of tag/link/QR behavior. Remove the old Move up/down controls and their obsolete tests only once these replacement interactions are verified; document any physical-device checks that remain manual.
+
+### Step 17 — Four most-used tags with live counts
+
+**Status:** Not started. **Priority:** P1. **Dependencies:** Steps 7–8. Recommended next.
+
+Scope: replace the filter dropdown with up to four clickable tag buttons showing each label and quantity, for example `Work (12)`. Count notes containing each case-insensitive tag once per note, across the entire collection rather than the filtered subset. Sort by count descending, then normalized label ascending for deterministic ties; retain a consistent display spelling. Recompute after save, tag edit, delete, clear and import without reload. Unsaved editor drafts do not change collection counts.
+
+Clicking a tag filters matching notes; clicking it again clears the filter. Keep an explicit All blocks/reset control and the existing per-note chip toggles so less-common tags remain usable. If an active tag is outside the top four, show its active filter and count separately with a clear action, without displacing or increasing the four most-used suggestions. Reset only when the selected tag no longer exists. Preserve the editing exception and distinct match count from Step 13. Announce count/filter changes accessibly without stealing focus.
+
+Remove detected URLs from filter choices and matching logic entirely. Links remain displayed, clickable and available for their planned QR views; their bodies/payloads do not change. This supersedes dropdown/link-filter requirements in completed Steps 2, 7 and 8 and any earlier planned URL-filter checks. Do not rewrite historical completion reports; update current UI documentation/tests when implementing.
+
+Acceptance: test zero through many tags, deterministic ties, casing variants, deduplication, live count/rank changes after mutations, active tags falling out of the top four, less-common chip selection, tag removal, edits/imports and 320px layout. Counts must not shrink when a filter activates. No URL filter remains, while link opening, copying, editing highlights and QR behavior still pass their checks.
+
+### Step 18 — Reuse a note color by clicking its HEX label
+
+**Status:** Not started. **Priority:** P1. **Dependency:** Step 10.
+
+Scope: make each note's displayed HEX value a compact native button. Clicking it fills the note color picker and HEX input with that value through their existing synchronization/validation path. Do not enter edit mode, alter the source note, save any note, copy text or change the page-background picker. If the editor already contains a draft or an active edit, update only its selected color; apply it to that note only on an explicit Add/Save.
+
+Acceptance: mouse, Enter and Space select the exact source color without scrolling or losing the current draft. Both picker/HEX fields update and any invalid draft HEX state clears. Stored blocks, tag filters, existing edit state and page background remain unchanged until the normal save action. Label remains readable, compact and explicitly named for assistive technology, for example `Use note color #123456`. Color-label clicks must not bubble into copying or initiate dragging.
+
+### Step 19 — Clearer import/export interface
+
+**Status:** Not started. **Priority:** P2.
+
+Scope: group import/export behind one compact **Backups** entry point in the header, coordinated with Step 14's denser layout. Provide clearly labeled Export all notes and Import backup actions with short explanations. Export must always include the full saved collection, including filtered-out notes, and say that unsaved drafts are excluded. Preserve the compatible JSON backup shape; a date-stamped filename is an optional convenience.
+
+Before replacing notes, parse and validate the selected file, show its filename and valid note count, and explicitly explain that import replaces the existing collection. Offer Cancel and a clear Replace confirmation, with an Export current notes action available before replacement. Validation errors must preserve stored notes and the editor draft. Cancel must retain the current UI state and allow choosing the same file again. Confirmed replacement follows existing edit/filter cleanup rules. Keep the interface local, keyboard accessible, and usable at 320px; use inline status rather than silent failures. Do not add cloud sync, accounts or automatic imports.
+
+Acceptance: verify full-collection export while filtered and editing, preview counts, malformed JSON/schema rejection, cancellation, same-file retry, confirmed replacement, empty backups, storage failures and recovery messaging. Check keyboard focus when opening/closing the backup UI and protect unsaved drafts until replacement is explicitly confirmed. Continue actual downloaded-file verification in the isolated browser runner.
 
 ## Verification
 

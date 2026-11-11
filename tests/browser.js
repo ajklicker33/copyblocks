@@ -409,6 +409,86 @@ frame.onload = async () => {
             const field = d.querySelector(`#${prefix}-${suffix}`); field.focus();
             return d.activeElement === field && field.labels.length === 1;
         })), 'color inputs are focusable with explicit labels');
+        const editFixtures = [
+            { title: 'First', text: 'First body', tags: ['first'], color: '#FFFFFF' },
+            { title: 'Second', text: 'https://example.org/second', tags: ['second'], color: '#000000' },
+            { title: 'Third', text: 'Third body', tags: ['third'], color: '#FF0000' }
+        ];
+        await importJSON(JSON.stringify(editFixtures));
+        const cardAction = (name, label) => {
+            const card = [...d.querySelectorAll('.text-block')].find(el => el.querySelector('.block-title').textContent === name);
+            [...card.querySelectorAll('.block-actions button')].find(el => el.textContent === label).click();
+        };
+        const displayOrder = () => [...d.querySelectorAll('.block-title')].map(el => el.textContent).join(',');
+        const savedOrder = () => stored().map(block => block.title).join(',');
+        cardAction('Second', 'Show QR');
+        const originalEditStorage = w.localStorage.getItem('textBlocks');
+        w.scrollTo(0, 120);
+        const scrollBeforeEdit = w.scrollY;
+        cardAction('Second', 'Edit');
+        check(displayOrder() === 'Second,First,Third' && savedOrder() === 'First,Second,Third', 'editing promotes display without changing saved order');
+        check(d.querySelectorAll('.is-editing').length === 1 && d.querySelector('.is-editing').getAttribute('aria-label').includes('Editing'), 'one edited card has visible and accessible state');
+        check(d.activeElement === d.querySelector('#new-text'), 'starting edit focuses text entry');
+        check(w.scrollY === scrollBeforeEdit, 'edit focus does not scroll the page');
+        check(decodeQR()?.data === editFixtures[1].text, 'edit promotion preserves visible QR payload');
+        check([...d.querySelectorAll('.text-block')].every(card => !card.draggable) && [...d.querySelectorAll('.block-actions button')].filter(el => el.textContent.startsWith('Move ')).every(el => el.disabled), 'all reordering is disabled during editing');
+        const editDrag = new w.DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new w.DataTransfer() });
+        d.querySelector('.is-editing').dispatchEvent(editDrag);
+        check(editDrag.defaultPrevented && !d.querySelector('.dragging'), 'drag cannot reorder promoted editing card');
+        let exportedWhileEditing;
+        const originalCreateURL = w.URL.createObjectURL;
+        const originalAnchorClick = w.HTMLAnchorElement.prototype.click;
+        try {
+            w.URL.createObjectURL = blob => { exportedWhileEditing = blob; return originalCreateURL.call(w.URL, blob); };
+            w.HTMLAnchorElement.prototype.click = function () {};
+            click('#export-button');
+        } finally {
+            w.URL.createObjectURL = originalCreateURL; w.HTMLAnchorElement.prototype.click = originalAnchorClick;
+        }
+        const editExport = JSON.parse(await exportedWhileEditing.text());
+        check(editExport.map(block => block.title).join(',') === 'First,Second,Third' && editExport.every(block => !('editing' in block)), 'export uses saved order without edit presentation state');
+        filterBy('#first');
+        check(displayOrder() === 'Second,First' && d.querySelector('.editing-badge').textContent.includes('outside the current filter'), 'edited card stays first as explicit filter exception');
+        check(d.querySelector('#block-count').textContent === '1 of 3 blocks match the filter (+1 editing block)', 'filter count separates matches from editing exception');
+        check(d.querySelector('.is-editing .link-list a').href === 'https://example.org/second', 'editing exception retains detected links');
+        click('#cancel-edit');
+        check(displayOrder() === 'First' && !d.querySelector('.is-editing') && w.localStorage.getItem('textBlocks') === originalEditStorage, 'cancel restores filtered placement without writing storage');
+        filterBy(''); cardAction('Third', 'Edit'); cardAction('First', 'Edit');
+        check(displayOrder() === 'First,Second,Third' && d.querySelectorAll('.is-editing').length === 1 && d.querySelector('#block-title').value === 'First', 'switching edits transfers the highlight without duplication');
+        click('#cancel-edit'); cardAction('Third', 'Edit');
+        d.querySelector('#new-text').value = 'Saved third'; click('#add-button');
+        check(displayOrder() === 'First,Second,Third' && savedOrder() === 'First,Second,Third' && stored()[2].text === 'Saved third' && !d.querySelector('.is-editing'), 'save updates original record and restores normal placement');
+        cardAction('Second', 'Edit');
+        window.testMotion = 'no-preference'; await until(() => window.testMotion === null, 'default motion preference');
+        check(w.getComputedStyle(d.querySelector('.is-editing'), '::after').animationName === 'editing-dots' && w.getComputedStyle(d.querySelector('.is-editing'), '::after').pointerEvents === 'none', 'moving dotted outline does not intercept controls');
+        window.testMotion = 'reduce'; await until(() => window.testMotion === null, 'reduced motion preference');
+        check(w.getComputedStyle(d.querySelector('.is-editing'), '::after').animationName === 'none' && w.getComputedStyle(d.querySelector('.is-editing'), '::after').backgroundImage.includes('radial-gradient'), 'reduced motion keeps static dotted outline');
+        check(d.documentElement.scrollWidth <= w.innerWidth, 'edited outline fits narrow layout');
+        window.testMotion = 'no-preference'; await until(() => window.testMotion === null, 'restore motion preference');
+        cardAction('Second', 'Delete');
+        check(!d.querySelector('.is-editing') && d.querySelector('#cancel-edit').hidden && savedOrder() === 'First,Third', 'deleting edited record ends edit session with correct order');
+        cardAction('Third', 'Edit');
+        w.confirm = () => false; await importJSON(JSON.stringify([{ text: 'Cancelled import' }]));
+        check(!!d.querySelector('.is-editing'), 'cancelled import preserves editing state');
+        w.confirm = () => true; await importJSON(JSON.stringify([{ title: 'Imported', text: 'New collection' }]));
+        check(!d.querySelector('.is-editing') && d.querySelector('#cancel-edit').hidden, 'confirmed replacement import clears edit state');
+        action('Edit'); click('#clear-button');
+        check(!d.querySelector('.is-editing') && stored().length === 0 && d.querySelector('#cancel-edit').hidden, 'clear ends editing and removes promoted card');
+        add('Badge save', 'Original body', 'original'); action('Edit');
+        let badgeCopies = 0;
+        Object.defineProperty(w.navigator, 'clipboard', { configurable: true, value: { writeText: async () => { badgeCopies++; } } });
+        check(d.querySelector('.editing-badge').tagName === 'BUTTON' && d.querySelector('.editing-badge').getAttribute('aria-label').startsWith('Save changes'), 'Editing label is an accessible save button');
+        d.querySelector('#new-text').value = '   '; click('.editing-badge');
+        check(stored()[0].text === 'Original body' && !!d.querySelector('.is-editing'), 'Editing save respects empty-body validation');
+        d.querySelector('#new-text').value = 'New body'; setColorField('#note-color-hex', '#12'); click('.editing-badge');
+        check(stored()[0].text === 'Original body' && !!d.querySelector('.is-editing'), 'Editing save respects HEX validation');
+        setColorField('#note-color-hex', '#123456');
+        d.querySelector('#block-title').value = 'Updated title'; d.querySelector('#block-tags').value = 'updated';
+        d.querySelector('.editing-badge').focus(); await pressChipKey('Enter');
+        check(stored()[0].text === 'New body' && stored()[0].title === 'Updated title' && stored()[0].tags[0] === 'updated' && stored()[0].color === '#123456', 'Editing button saves all current editor fields via native Enter');
+        check(!d.querySelector('.is-editing') && badgeCopies === 0, 'Editing save exits edit state without copying');
+        action('Edit'); d.querySelector('#new-text').value = 'Mouse save'; click('.editing-badge');
+        check(stored()[0].text === 'Mouse save' && !d.querySelector('.is-editing') && badgeCopies === 0, 'clicking Editing saves without copying');
         if (new URLSearchParams(location.search).has('forceFailure')) check(false, 'intentional runner failure probe');
         output.dataset.status = 'passed';
         output.textContent = results.join('\n') + `\nALL PASSED (${results.length} assertions)`;

@@ -194,14 +194,32 @@ document.addEventListener('DOMContentLoaded', () => {
             filter.append(group);
         }
         filter.value = [...filter.options].some(o => o.value === currentFilter) ? currentFilter : '';
+        const matchesFilter = block => (!filter.value.startsWith('tag:') || tags(block).includes(filter.value.slice(4))) &&
+            (!filter.value.startsWith('link:') || blockLinks.get(block).includes(filter.value.slice(5)));
+        const matchingCount = blocks.filter(matchesFilter).length;
+        const editingException = editing && !matchesFilter(editing);
+        const displayBlocks = blocks.map((block, index) => ({ block, index }));
+        const editIndex = displayBlocks.findIndex(entry => entry.block === editing);
+        if (editIndex >= 0) displayBlocks.unshift(...displayBlocks.splice(editIndex, 1));
         list.replaceChildren();
-        blocks.forEach((block, index) => {
-            if (filter.value.startsWith('tag:') && !tags(block).includes(filter.value.slice(4))) return;
-            if (filter.value.startsWith('link:') && !blockLinks.get(block).includes(filter.value.slice(5))) return;
+        displayBlocks.forEach(({ block, index }) => {
+            if (block !== editing && !matchesFilter(block)) return;
             const card = document.createElement('article'); card.className = 'text-block';
-            card.style.backgroundColor = block.color; card.draggable = !filter.value;
+            card.style.backgroundColor = block.color; card.draggable = !filter.value && !editing;
             card.style.color = foregroundFor(block.color);
             card.dataset.index = index;
+            if (block === editing) {
+                card.classList.add('is-editing');
+                card.setAttribute('aria-label', `${block.title} — Editing`);
+                const badge = button(editingException ? 'Editing — shown outside the current filter' : 'Editing', () => {
+                    add.click();
+                    if (!editing) text.focus({ preventScroll: true });
+                });
+                badge.className = 'editing-badge'; badge.dataset.action = 'save';
+                badge.setAttribute('aria-label', `Save changes to ${block.title}`);
+                badge.title = 'Save changes';
+                card.append(badge);
+            }
             const heading = document.createElement('h2'); heading.className = 'block-title'; heading.textContent = block.title;
             const content = document.createElement('div'); content.className = 'text-content'; content.textContent = block.text;
             const actions = document.createElement('div'); actions.className = 'block-actions';
@@ -210,7 +228,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 editing = block; title.value = block.title; text.value = block.text; chooseColor(block.color);
                 tagInput.value = block.tags.join(', ');
                 updateDetectedLinks();
-                add.textContent = 'Save Changes'; $('#cancel-edit').hidden = false; title.focus();
+                dragging = null;
+                add.textContent = 'Save Changes'; $('#cancel-edit').hidden = false;
+                render(); text.focus({ preventScroll: true });
             }), button('Delete', () => {
                 if (!confirm(`Delete "${block.title}"?`)) return;
                 if (editing === block) resetEditor();
@@ -218,10 +238,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }));
             for (const [label, offset] of [['Move up', -1], ['Move down', 1]]) {
                 const move = button(label, () => {
+                    if (editing || filter.value) return;
                     [blocks[index], blocks[index + offset]] = [blocks[index + offset], blocks[index]];
                     save(); render();
                 });
-                move.disabled = !!filter.value || index + offset < 0 || index + offset >= blocks.length;
+                move.disabled = !!editing || !!filter.value || index + offset < 0 || index + offset >= blocks.length;
+                if (editing) move.title = 'Finish editing before reordering blocks.';
                 actions.append(move);
             }
             card.append(heading, content);
@@ -274,27 +296,27 @@ document.addEventListener('DOMContentLoaded', () => {
             card.addEventListener('click', () => copy(block.text));
             // A draggable ancestor must not turn a chip press into a card drag.
             card.addEventListener('pointerdown', event => {
-                card.draggable = !filter.value && !event.target.closest('.tag-chip');
+                card.draggable = !editing && !filter.value && !event.target.closest('.tag-chip');
             });
             for (const eventName of ['pointerup', 'pointercancel']) {
-                card.addEventListener(eventName, () => { card.draggable = !filter.value; });
+                card.addEventListener(eventName, () => { card.draggable = !editing && !filter.value; });
             }
             card.addEventListener('dragstart', event => {
                 if (!card.draggable) { event.preventDefault(); return; }
                 dragging = block; card.classList.add('dragging'); event.dataTransfer.setData('text/plain', String(index));
             });
             card.addEventListener('dragend', () => { dragging = null; card.classList.remove('dragging'); });
-            card.addEventListener('dragover', event => { if (dragging && !filter.value) event.preventDefault(); });
+            card.addEventListener('dragover', event => { if (dragging && !editing && !filter.value) event.preventDefault(); });
             card.addEventListener('drop', event => {
                 event.preventDefault();
-                if (!dragging || dragging === block || filter.value) return;
+                if (!dragging || dragging === block || editing || filter.value) return;
                 const from = blocks.indexOf(dragging);
                 blocks.splice(from, 1); blocks.splice(index, 0, dragging); dragging = null; save(); render();
             });
             list.append(card);
         });
         $('#empty-state').hidden = list.children.length > 0;
-        $('#block-count').textContent = `${list.children.length} of ${blocks.length} blocks`;
+        $('#block-count').textContent = `${matchingCount} of ${blocks.length} blocks${editingException ? ' match the filter (+1 editing block)' : ''}`;
         if (focusedChip) (restoredChip || filter).focus({ preventScroll: true });
     }
     add.addEventListener('click', () => {
@@ -304,7 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (editing) Object.assign(editing, value); else blocks.push(value);
         resetEditor(); save(); render();
     });
-    $('#cancel-edit').addEventListener('click', resetEditor);
+    $('#cancel-edit').addEventListener('click', () => { resetEditor(); render(); title.focus(); });
     text.addEventListener('input', updateDetectedLinks);
     filter.addEventListener('change', render);
     noteColorControl = colorControl('note-color', '#F8F8F8', chooseColor);
