@@ -14,56 +14,13 @@
         <h1>CopyBlocks</h1>
         <div class="header-buttons">
             <button id="backups-button" aria-haspopup="dialog">Backups</button>
+            <button id="action-style-button" aria-pressed="false">Use icons</button>
+            <button id="search-button" aria-expanded="false" aria-controls="note-search-panel">Search</button>
             <button id="clear-button">Clear All</button>
-            <div class="layout-wrapper">
-        <button id="layout-button" aria-label="Choose column layout">
-            <div class="grid-icon">
-                <div class="grid-dot"></div>
-                <div class="grid-dot"></div>
-                <div class="grid-dot"></div>
-                <div class="grid-dot"></div>
-                <div class="grid-dot"></div>
-                <div class="grid-dot"></div>
-                <div class="grid-dot"></div>
-                <div class="grid-dot"></div>
-                <div class="grid-dot"></div>
-            </div>
-        </button>
-                <div class="layout-dropdown custom-dropdown">
-                    <div class="layout-option" data-columns="1">
-                        <div class="grid-icon">
-                            <div class="grid-dot"></div>
-                            <div class="grid-dot"></div>
-                            <div class="grid-dot"></div>
-                        </div>
-                        <span>1 Column</span>
-                    </div>
-                    <div class="layout-option" data-columns="2">
-                        <div class="grid-icon">
-                            <div class="grid-dot"></div>
-                            <div class="grid-dot"></div>
-                            <div class="grid-dot"></div>
-                            <div class="grid-dot"></div>
-                            <div class="grid-dot"></div>
-                            <div class="grid-dot"></div>
-                        </div>
-                        <span>2 Columns</span>
-                    </div>
-                    <div class="layout-option" data-columns="3">
-                        <div class="grid-icon">
-                            <div class="grid-dot"></div>
-                            <div class="grid-dot"></div>
-                            <div class="grid-dot"></div>
-                            <div class="grid-dot"></div>
-                            <div class="grid-dot"></div>
-                            <div class="grid-dot"></div>
-                            <div class="grid-dot"></div>
-                            <div class="grid-dot"></div>
-                            <div class="grid-dot"></div>
-                        </div>
-                        <span>3 Columns</span>
-                    </div>
-                </div>
+            <div class="density-control">
+                <label for="density-slider">Columns</label>
+                <input id="density-slider" type="range" min="1" max="3" value="3" step="1" aria-describedby="density-value">
+                <output id="density-value" for="density-slider">3</output>
             </div>
             <fieldset class="color-control">
                 <legend>Page background</legend>
@@ -93,7 +50,7 @@
         </div>
         <section id="detected-links" class="detected-links" aria-labelledby="detected-links-heading">
             <h2 id="detected-links-heading">Detected links</h2>
-            <ul id="detected-links-list" class="link-list" hidden></ul>
+            <ol id="detected-links-list" class="link-list" hidden></ol>
             <p id="no-detected-links">No links detected.</p>
         </section>
         <div class="editor-footer">
@@ -113,6 +70,15 @@
         <p id="status" role="status" aria-live="polite"></p>
     </section>
     <section class="container blocks-section" aria-label="Saved text blocks">
+        <div id="note-search-panel" hidden>
+            <div class="note-search-row">
+                <label for="note-search">Search notes</label>
+                <input id="note-search" type="search" placeholder="Title, text or tags" aria-describedby="note-search-help">
+                <button id="close-search">Close search</button>
+            </div>
+            <p id="note-search-help">Escape clears and closes. Press Ctrl+F (Cmd+F on Mac) again in this field for browser Find.</p>
+        </div>
+        <div class="blocks-toolbar">
         <div id="tag-filter" class="tag-filter" role="group" aria-label="Filter notes by tag">
             <div class="tag-filter-row">
                 <button id="all-tags" type="button" aria-pressed="true">All</button>
@@ -126,9 +92,13 @@
                 <p id="tag-search-empty" hidden>No matching tags.</p>
             </details>
         </div>
+        <button id="priority-toggle" type="button" aria-pressed="false">Priority</button>
+        </div>
         <span id="block-count" role="status" aria-live="polite" aria-atomic="true"></span>
         <p id="empty-state">No blocks to show. Add a text block above.</p>
         <div id="text-blocks"></div>
+        <p id="reorder-help" class="sr-only">Reorder: press Space or Enter to pick up, arrow keys to move, Space or Enter to drop, Escape to cancel.</p>
+        <p id="reorder-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
     </section>
     <dialog id="backups-dialog" aria-labelledby="backups-heading">
         <div class="backup-heading"><h2 id="backups-heading">Backups</h2><button id="close-backups" aria-label="Close backups">Close</button></div>

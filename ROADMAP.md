@@ -13,8 +13,8 @@ Implementation priorities, stable numbered steps, and validation history. See [R
 | P1 | Color picker and color value | Implemented in Step 10: native note/background pickers, synchronized HEX fields, per-note color labels and contrast-aware text. |
 | P1 | Editing visibility | Implemented in Step 13: temporarily show the edited block first with an Editing badge and animated dotted outline; saved order stays unchanged. |
 | P1 | Block action placement | Implemented in Step 14: evenly spaced top Copy/Edit/Delete controls and bottom code controls. Step 16 replaces movement buttons with drag-and-drop. |
-| P1 | Drag destination preview | Planned in Step 16: drag-and-drop replaces Move up/down, with an empty dotted insertion placeholder and keyboard/touch support. |
-| P2 | Words/icons toggle | Planned in Step 15: a top-of-page preference switches block action labels between words and accessible icons. |
+| P1 | Drag destination preview | Implemented in Step 16: drag handles replace Move up/down, with an empty dotted insertion placeholder and keyboard/touch support. |
+| P2 | Words/icons toggle | Implemented in Step 15: persistent words/icons preference, inline Save/Cancel while editing and red Delete/Cancel controls. |
 | P1 | Popular tag filters | Implemented in Step 17: responsive frequent-tag buttons/counts, collapsible searchable overflow and a visible active tag; detected links are not filterable. |
 | P1 | Color reuse shortcut | Implemented in Step 18: note HEX buttons fill the note picker without entering edit mode or saving. |
 | P1 | Compact interface | Implemented in Step 14: a smaller page/block title area and adjacent responsive control groups. |
@@ -22,7 +22,7 @@ Implementation priorities, stable numbered steps, and validation history. See [R
 | P1 | Wrapping / separate blocks div | Implemented responsive wrapping and a separate saved-blocks section. |
 | P2 | Detect links | Detected-link lists and live editor preview preserve card-click copying. Step 17 removed URL filtering. |
 | P2 | Barcode / QR | QR implemented in Step 3 with a bundled encoder and independent decode tests. Linear barcodes remain deferred pending scanner/symbology requirements. Veto case normalization: exact text is preserved. |
-| P2 | Matching link and QR numbers | Planned in Step 9: numbered detected links and matching per-link QR codes, with the full-text QR clearly separate. |
+| P2 | Matching link and QR numbers | Implemented in Step 9: centered QR overlays; number links/codes only when multiple distinct links exist. Full text QR stays separate. |
 | P1 | Per-note creation options | Planned in Step 11: saved Generate QR and Detect links checkboxes; enabled QR is shown alongside text by default. Step 12 adds the working Generate barcode checkbox. |
 | P2 | Barcode generation | Planned in Step 12: local barcode generation, validated payloads, default display when checked, and independent scan tests. |
 | P2 | Request feature | Use [GitHub issues](https://github.com/ajklicker33/Copyblocks/issues) now. Defer an in-app submission service until there is a need for authentication, spam controls and maintenance. |
@@ -31,10 +31,11 @@ Implementation priorities, stable numbered steps, and validation history. See [R
 
 ## Executable implementation plan
 
-To start a task, prompt **"Begin work on Step X in ROADMAP.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7, 8, 10, 13–14 and 17–19 are **Complete**; Steps 4–6, 9, 11–12 and 15–16 are **Not started**. Recommended order: **16 → 15 → 11 → 9 → 12 → 4**. Steps 5–6 remain lower-priority optional work. The earlier regression fix and working features above are already implemented.
+To start a task, prompt **"Begin work on Step X in ROADMAP.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7–10, 13–20 and 22–25 are **Complete**; Steps 4–6, 11–12, 21 and 26–27 are **Not started**. Step 27 is optional. Recommended order: **21 → 26 → 11 → 12 → 4**: organization and presentation. Steps 5–6 remain lower-priority optional work. New requests are scoped below; they are not implemented merely by being added to this plan.
 
 ### Instructions for the implementing agent
 
+- Version control: use one active feature branch based on current `main` and one PR targeting `main`. Do not create stacked PRs unless explicitly requested. Explain what is local, pushed, and merged. When authorized to clean up, verify merged content before deleting branch names. The assistant handles implementation, testing and requested commit/push/PR preparation; the user reviews/merges unless they explicitly delegate merging. Push does not mean merge.
 - Treat the selected step as authorization to implement its stated scope, including necessary local fixes and checks. Read the current code and repository instructions first; do not stop at proposing another plan.
 - Execute only the requested step. Check the dependencies listed under that step and preserve features from steps already completed. Later refinements do not reopen the historical completion status of earlier steps.
 - Use the defaults below without asking the user to repeat decisions. Ask only when a genuine blocker or a change outside the stated scope requires input.
@@ -149,16 +150,25 @@ Validation: all 145 browser assertions plus actual downloaded JSON verification 
 
 ### Step 9 — Centered QR overlays and numbered link codes
 
-**Status:** Not started. **Priority:** P2. **Dependencies:** Steps 2–3.
+**Status:** Complete (2026-11-12). **Priority:** P2. **Dependencies:** Steps 2–3.
+
+Completed refinement (2026-11-12): opening QR defaults to the first detected link, or Full text QR when no link exists. The QR image is a keyboard-accessible copy button for exactly its selected payload; it does not copy the entire note when a link code is selected. A top-left pin icon holds the overlay open against outside clicks and Escape, with an accessible pressed state. A red X at top right explicitly closes even a pinned overlay and returns focus. Unpin restores normal dismissal. Pinning is session-only, survives unrelated renders and does not enter backups; explicit closure resets it. This refinement supersedes any earlier assumption that the full-body QR is the default or QR-image clicks do nothing.
+
+Refinement validation: all 379 browser assertions and actual downloaded JSON verification passed, including first-link defaults, exact link/body copying through mouse/native Enter, pin placement/state, outside/Escape behavior, retained selection across rerenders, explicit red-X closure and unpinning. No separate roadmap step was needed.
+
+Additional presentation requests: remove the redundant “Scan to read full block text” caption. Keep a concise Full text QR / Link N identifier where needed. Clicking outside the QR panel dismisses it, as do Close and Escape, without copying the underlying block or starting a drag. Return focus to the opener; interactions inside the panel must not dismiss it.
 
 Presentation refinement: show QR codes in an overlay centered on their own block instead of inserting them into the text flow. This supersedes Step 14's inline QR placement when Step 9 ships. Keep the block's size and position stable. Provide a clearly labeled Close control, Escape dismissal, focus return to the opening control, and prevent overlay interactions from copying or dragging the block. Fit short cards and 320px screens without clipping the QR quiet zone; preserve scannability and accessible error messages. For multiple link codes, use a compact labeled selector within the overlay, retaining the matching link numbers and distinct Full text QR label. Verify positioning, dismissal, keyboard access and independent QR decoding.
 
-Scope: render Detected links as an ordered list in both the editor preview and saved blocks. Number distinct links 1, 2, 3 in first-appearance order within each block; repeated occurrences of the same parsed URL share one number. On saved blocks, provide on-demand QR views for those links, labeled **Link 1**, **Link 2**, etc., so the list and QR images can be matched at a glance. Each link QR encodes exactly the destination represented by its matching detected link, using the existing URL parser's normalization. Do not include the display number in the encoded payload.
+Scope: number detected links and link codes only when a block contains more than one distinct link. A single link uses an unnumbered list entry and a Link code label. For multiple links, use ordered lists in the editor preview and saved blocks, numbered 1, 2, 3 in first-appearance order; repeated occurrences of the same parsed URL share one number. On saved blocks, provide on-demand QR views for those links, labeled **Link 1**, **Link 2**, etc., so the list and QR images can be matched at a glance. Each link QR encodes exactly the destination represented by its matching detected link, using the existing URL parser's normalization. Do not include the display number in the encoded payload.
 
 Preserve the existing exact-body QR under a distinct **Full text QR** label; it must not be numbered as if it represents one detected link. With no detected links, only the full-text QR is available. Keep generation local, with Show/Hide controls and accessible descriptions identifying the block and link number. If Step 11 is implemented, honor its saved QR/default-visibility and Detect links settings: checked QR shows the full-text QR and available numbered link QR views by default; unchecked QR stays on demand. The editor needs numbered link preview only; QR generation remains on saved blocks. Numbering is derived presentation state, not stored metadata, and restarts at 1 for each block.
 
 Acceptance: a block with three distinct links shows three matching link/QR identifiers, and an independent decoder recovers the correct destination from each image. Full-text QR continues to decode to the complete original body. Deduplication, punctuation handling, edits, imports and link removals update list order, labels and visible QR payloads together without stale associations. Reordering or filtering blocks does not change their internal link numbering. QR controls and link clicks do not copy the body; ordinary card clicks still do. Verify zero/one/multiple links, repeated URLs, long destinations, failed QR generation and 320px layout. Numbers never enter copied text, stored bodies or backup metadata.
 
+Implementation: QR content uses a centered absolute overlay without changing card dimensions. A compact selector switches between exact Full text QR and normalized detected-link payloads; only multiple distinct links receive Link 1/2/3 labels. Single-link blocks use Link. Numbering is derived in first-appearance order and duplicates share one entry. The old scan caption is removed. Close, Escape and outside mouse/touch activation dismiss the panel and restore opener focus; inside interaction stays usable. Outside pointer presses cannot start block dragging or copy the underlying note. Cached views survive unrelated rendering and regenerate after text edits.
+
+Validation: all 354 browser assertions plus actual downloaded JSON verification passed. Independent decoding covers three matching numbered link codes, single/repeated links and exact full-body QR; additional checks cover stable card dimensions, centered placement, Close/Escape/outside mouse and touch dismissal, focus, 320px fit, caption removal and edited payload refresh. Existing oversized/invalid Unicode and filtering/reorder tests remain passing. Physical scanning and screen-reader behavior remain manual release checks.
 ### Step 10 — Replace color presets with a picker and HEX value
 
 **Status:** Complete (2026-11-10). **Priority:** P1.
@@ -227,7 +237,9 @@ Validation: all 259 browser assertions and actual downloaded JSON verification p
 
 ### Step 15 — Toggle block actions between words and icons
 
-**Status:** Not started. **Priority:** P2. **Dependency:** Step 14.
+**Status:** Complete (2026-11-11). **Priority:** P2. **Dependency:** Step 14.
+
+Editing controls refinement: remove the separate Editing badge/save button. On the block being edited, replace Edit with Save and Delete with Cancel in the existing top row; keep Copy available. Save uses the current editor validation/save path and Cancel discards the draft through the existing cancel path. Preserve the dotted outline and accessible editing state without a separate visible Editing label. Delete and Cancel always use visible red foreground text (and red icons in icon mode) on a contrast-safe control surface, independent of the note color. Apply this rule to other Delete/Cancel controls, including backup cancellation. This supersedes Step 13's badge and the Editing-control wording below. Test invalid Save, Cancel restoration, focus, disabled reordering and contrast in both modes.
 
 Scope: add a clearly labeled button at the top of the page that toggles block action controls between words and icons. Default to words and persist the preference in its own local-storage setting. Apply it to Copy, Edit, Delete, the Editing/Save control and Show/Hide QR/barcode when available. The Editing control becomes a Save icon in icon mode, retaining its save handler, validation, accessible Save changes name and tooltip. Do not restore Move up/down controls removed by Step 16; its drag handle keeps a consistent recognizable appearance and accessible name in both modes. The toggle itself retains a readable text label describing the available switch, such as **Use icons** / **Use words**; do not turn it into an unexplained icon.
 
@@ -235,9 +247,13 @@ Use small local SVG icons with no network dependency. Keep native button semanti
 
 Acceptance: toggling updates existing blocks immediately, newly added/imported blocks use the selected mode, and the preference survives reload independently of note content. Switching during editing, filtering or QR display preserves those states and focus. Test mouse and keyboard activation, accessible names, tooltips, disabled movement, Show/Hide transitions, narrow layouts and unavailable storage. Step 12 must extend this presentation to barcode controls when they become available.
 
+Implementation: the header's Use icons / Use words button updates existing action buttons in place and stores the separate actionIconMode preference. Local SVGs have accessible action names and hover/focus tooltips. The edited card keeps its outline and accessible editing state, with Copy/Save/Cancel in the top row and no Editing badge. Filter exceptions retain a concise explanatory label. Delete/Cancel controls use red foregrounds on white surfaces in either mode; the Reorder handle retains its label. QR Show/Hide names, icons and expanded state update together. Drafts, filters, focus, visible QR canvases and note data survive presentation changes.
+
+Validation: all 321 browser assertions plus actual downloaded JSON verification passed. Checks include word/icon Save validation, Cancel preserving the note, native Enter/Space activation, red-on-white controls, descriptive SVG buttons, Show/Hide QR decoding/state, draft/filter/focus preservation, reload/new/imported note presentation, 320px fit and simulated preference-write failure. Physical screen-reader and tooltip appearance review remain manual release checks.
+
 ### Step 16 — Drag-and-drop with a dotted destination placeholder
 
-**Status:** Not started. **Priority:** P1. Supersedes the Move up/down button layout previously requested in Step 14.
+**Status:** Complete (2026-11-11). **Priority:** P1. Supersedes the Move up/down button layout previously requested in Step 14.
 
 Scope: replace Move up / Move down buttons with drag-and-drop reordering and a clear drag handle on each block. While moving a block, insert an empty dotted-outline placeholder at the exact grid position where it will land on release. Size the placeholder to the dragged block, keep a distinct dragged-block preview, and update the insertion target as the pointer crosses neighboring cards. The placeholder must occupy layout space rather than merely decorating the hovered card. Distinguish its static empty dotted outline from Step 13's animated outline on the populated edited block.
 
@@ -246,6 +262,10 @@ Use insertion positions, not swaps, with consistent before/after behavior in one
 Accessibility and touch: use a focusable drag handle with an accessible name and concise instructions. Space/Enter on the handle picks up a block; arrow keys move its prospective position with the same dotted placeholder; Space/Enter drops and Escape cancels. Announce pickup, destination and completion via a live region, and retain focus on the moved handle. Support touch dragging through the handle while preserving normal page scrolling elsewhere. Text selection, links, chips, action buttons and QR controls must not start a drag. A completed or cancelled drag must not trigger the block's copy handler.
 
 Acceptance: exercise real pointer dragging plus keyboard and touch paths, including movement in both directions, across rows, to first/last positions, past unequal-height blocks and during edge scrolling. Verify the dotted placeholder predicts the final position exactly. Reload/export must reflect only committed drops; cancellations and invalid drops leave the saved order unchanged. Test filtered/editing restrictions, deleted/imported collections, interruption cleanup, native keyboard focus, 320px layouts, no accidental copying and preservation of tag/link/QR behavior. Remove the old Move up/down controls and their obsolete tests only once these replacement interactions are verified; document any physical-device checks that remain manual.
+
+Implementation: a dedicated Reorder handle uses pointer capture for mouse/touch, with a fixed dragged-card preview and an empty dotted placeholder occupying the prospective grid slot. Keyboard Space/Enter picks up/drops, arrows move by slot/row, and Escape cancels. Edge scrolling follows the pointer. Only successful drops write the new insertion order; invalid drops, cancellation, resize, lost capture and storage failures restore the original order. Handles are disabled while filtered/editing, and normal card contents never start a drag. Focus and live announcements follow reordering. No placeholder state enters stored notes or backups.
+
+Validation: all 302 browser assertions and actual JSON download verification pass. Native browser-protocol mouse, touch and keyboard input covers one/two/three columns, cross-row moves, first/last placement, unequal-height cards, edge scrolling, outside and same-position drops, Escape/touch cancellation, focus, no accidental copying, filtered/editing restrictions, import interruption, 320px fit, simulated storage failure and reload persistence. Physical-device touch feel and screen-reader announcements remain manual checks.
 
 ### Step 17 — Compact popular tags with live counts
 
@@ -289,7 +309,85 @@ Implementation: a single Backups header button opens a native modal with Export 
 
 Validation: all 273 browser assertions plus actual downloaded JSON verification passed. New coverage checks modal focus, malformed input, filename/count preview, draft preservation, cancellation, same-file retry, simulated storage failure/recovery, empty replacement, 320px layout and native Escape dismissal. Existing filtered/editing export checks still pass. OS file-picker interaction remains a manual release check.
 
+### Step 20 — Dismiss backups by clicking outside
+
+**Status:** Complete (2026-11-12). **Priority:** P1. **Dependency:** Step 19.
+
+Clicking the Backups backdrop closes the dialog, discards only the pending import preview, and returns focus to Backups. Retain notes, tags, filters and editor drafts. Require both pointer press and release outside the panel so dragging from inside does not dismiss it. Inside clicks, including empty panel space, must not close it. Preserve Close/Escape behavior and ignore late file reads after dismissal. Step 9 applies matching behavior to QR overlays.
+
+Implementation: Backups tracks the primary pointer's press and release against the actual dialog bounds. A click or tap dismisses only when both occur outside; inside whitespace, cross-boundary drags and cancelled gestures leave it open. Dismissal consumes the click, invalidates pending file reads immediately, clears the import preview and restores focus to Backups without changing notes or editor state. Close and Escape retain their existing behavior.
+
+Validation: all 330 browser assertions and actual downloaded JSON verification passed. Native mouse/touch checks cover inside whitespace, both cross-boundary drag directions, outside dismissal, touch cancellation, focus return, saved-note/draft/filter preservation and 320px layout. A controlled delayed file read verifies that closing and reopening cannot restore a stale preview. Physical-device touch testing remains a manual release check.
+
+### Step 21 — Foreground surface color preference
+
+**Status:** Not started. **Priority:** P2. **Dependency:** Step 10.
+
+Add a synchronized color picker/HEX preference for foreground interface surfaces: header, editor and saved-notes container backgrounds. Keep existing per-note colors and page background independently configurable. Default to current white surfaces and persist in a separate preference key; do not change note backup data. Reuse automatic foreground contrast selection for text on those surfaces; explicitly style labels, links, borders, inputs and focus rings so inherited colors remain readable. Preserve red Delete/Cancel controls on readable button surfaces. Test dark/light colors, invalid HEX, reload and unavailable storage. Keep preferences grouped compactly rather than exposing another large permanent panel.
+
+### Step 22 — Brief in-block copy confirmation
+
+**Status:** Complete (2026-11-12). **Priority:** P1.
+
+After successful card-click or Copy-button copying, show “Copied!” as a non-interactive overlay centered inside that block for about 1.5 seconds. No layout shift; reset the timer for repeated copies and clear it on deletion/rerender. Keep an accessible live announcement. Clipboard failure must show an error, never a success overlay. Test concurrent copies on different blocks, repeated clicks, clipboard rejection, edited/filtered blocks and interaction with QR overlays. The overlay must not intercept clicks or initiate dragging.
+
+Implementation: successful card or Copy-button actions show a centered, non-interactive Copied! overlay for 1.5 seconds alongside the existing accessible status announcement. Each card has its own resettable timer; rerenders clear feedback, and detached cards or superseded copy requests cannot display late success. Failed copies clear previous success feedback and retain the existing error message. Copied payloads and saved note data are unchanged.
+
+Validation: all 339 browser assertions and actual downloaded JSON verification passed. Focused checks cover exact copied body, centered placement without layout shift, pointer-transparent feedback, independent/restarted timers, expiry, simulated clipboard rejection, filtered/editing cards with QR content, rerender cleanup and late clipboard completion after deletion. OS clipboard permissions remain a manual release check.
+
+### Step 23 — Compact note search with Ctrl+F
+
+**Status:** Complete (2026-11-12). **Priority:** P1. **Dependency:** Step 17.
+
+Provide an accessible compact search control that filters saved notes live by title, body and separate tags, case-insensitively. Ctrl+F (Cmd+F on macOS) opens/focuses this app search while the page is active; prevent the browser default only when the control can be opened. Escape clears/closes search and restores focus. Do not intercept shortcuts in an open modal. Combine search with the selected tag using AND, show result counts/empty state, and keep active edits visible as labeled exceptions. Disable reordering while search restricts the collection. Search is presentation state only: export still includes all notes. Test Unicode, clearing, keyboard access, filtered editing and no hidden-note loss. Offer a discoverable way to use browser Find if needed.
+
+Implementation: the compact Search button reveals a labeled search field. Ctrl+F/Cmd+F opens and focuses it; repeating that shortcut in the field passes through to browser Find, with visible instructions. Live case-insensitive substring matching covers titles, bodies and separate tags and combines with the tag filter using AND. Counts and empty-state guidance update, active edits remain visible as exceptions, and search disables reordering. Escape/Close clears search and restores focus without changing drafts or tag selection. Modal shortcuts remain untouched; exports retain the full saved collection.
+
+Validation: all 369 browser assertions and actual JSON download verification passed. New checks cover native Ctrl+F, simulated Cmd+F/browser-Find pass-through, Unicode, title/body/tag matching, AND filtering, typing focus, counts, editing exceptions/draft preservation, full export, empty results, clearing/reorder recovery, modal exclusions and 320px fit. Browser Find UI and physical macOS keyboard testing remain manual checks.
+### Step 24 — Live density slider
+
+**Status:** Complete (2026-11-12). **Priority:** P2. **Dependency:** Step 16.
+
+Replace the waffle layout menu with a compact accessible range slider for columns, from 1 to a responsive maximum X determined by available width and a usable minimum card width. Changing columns adjusts row density live; retain the preferred value but clamp the effective columns on narrow screens. Migrate existing preferredColumns values, with no backup changes. Label the current effective column count, support keyboard arrows/Home/End, and use a single column at 320px. Cancel an active reorder before changing grid geometry. Test resizing, restored preferences, long content, QR overlays, enlarged rendering and reduced motion.
+
+Implementation: a labeled native Columns range slider replaces the waffle menu and updates the grid on input. Its maximum derives from actual grid width, gaps and a 280px minimum card width; narrow layouts use one column. The saved-note section can expand across wide screens. The existing preferredColumns key retains the chosen value across temporary viewport clamping, with legacy values restored unchanged. A ResizeObserver updates limits without rerendering notes or QR views; geometry changes cancel active reordering. Native arrow/Home/End keys and the visible/accessible effective count work without animation.
+
+Validation: all 390 browser assertions plus actual downloaded JSON verification passed. Coverage includes wide maximum above three, narrow clamping and restoration without overwriting preference, reload/legacy values, native Home/End/arrows, pinned QR preservation, drag cancellation without writes, long content and 200% CSS zoom. Existing reduced-motion checks remain passing; physical browser zoom remains a manual release check.
+### Step 25 — Prioritize by P0–P99 tags
+
+**Status:** Complete (2026-11-12). **Priority:** P2. **Dependencies:** Steps 7, 16.
+
+Use a compact top-right Priority toggle above the saved blocks. Custom arrangement is the default, including after reload. Priority mode changes only the displayed order, sorting separate metadata tags P0 through P99 numerically and case-insensitively; P0 is highest. Use the lowest number when several priority tags exist. Keep ties and unranked notes stable relative to custom order, with unranked notes last. Ignore malformed tags and body/title mentions. Keep tag/search filters functional in both views and restore custom relative order when toggled off. Preserve the established active-edit exception behavior.
+
+The toggle follows Use icons / Use words with an accessible icon alternative and pressed state. Disable drag reordering only while priority view is active (in addition to existing edit/filter restrictions). Exports and storage retain custom order; no saved sort or Undo action is needed. Changing priority tags updates the derived view. This supersedes the earlier plan to persist a sorted collection or disable priority while filtering.
+Implementation: the top-right Priority button sorts a temporary render sequence by each note's lowest valid priority tag, with saved array indices breaking ties. Toggling off restores custom order without any storage write. Priority state is session-only and defaults off. Filters/search and active-edit handling remain available; drag handles explain that Priority must be switched off to arrange notes. The button uses the shared SVG presentation and accessible pressed state.
+
+Validation: all 401 browser assertions plus actual downloaded JSON verification passed. Checks cover numeric P0/P1/P9/P10/P99 ordering, multiple tags, stable ties, invalid/body-only priorities, combined search/tag filtering, filtered custom-order restoration, unchanged stored/export order, disabled dragging, icon presentation, native Space/focus, edited priorities and custom view after reload.
+
+
+### Step 26 — Stationary editing and duplicate action
+
+**Status:** Not started. **Priority:** P1. Supersedes Step 13's temporary promotion and refines Steps 15/22.
+
+Keep an edited note in its existing displayed position, retaining the dotted border. Preserve its position when it becomes a filter exception, and keep scroll stable through Edit/Save/Cancel. Remove visible Copied! feedback from the editor/status section; retain the brief in-block overlay and a separate visually hidden live announcement. Clipboard errors remain visible.
+
+While editing, replace Copy with Duplicate (Dupe only if needed for space) and use a distinct duplicate-with-plus SVG icon in icon mode. Duplicate validates and creates a separate note from the current draft, inserted after the source in custom order, without overwriting the source. Keep the original edit/draft active and report success; failed validation or persistence must create nothing. Sorting/filtering remains derived from saved records. QR clicking continues to copy its represented payload. Test draft independence, saved order, filters/priority view, scroll, duplicate clicks, storage failure, and accessible word/icon controls.
+
+### Step 27 — Optional Connect Four subpage
+
+**Status:** Not started; optional. **Priority:** P3. Do not insert into the normal note-feature sequence without explicit selection.
+
+Build a separate local subpage linked compactly from CopyBlocks, keeping game code and storage independent from notes. Stage 27A implements the board, legal moves, wins/draws, restart, keyboard/touch play and CPU difficulty choices. Record wins/losses/draws, move count/history and difficulty per ruleset; allow resetting scores explicitly. Run CPU search in a worker with a time budget and cancel stale searches on restart/rule change.
+
+Stage 27B adds the requested “checkered columns disappear” variant. Before implementing it, clarify whether this means alternating columns, a checker-pattern of pieces, or periodic removal; define timing, gravity after removal, simultaneous wins and repetition/draw rules. Show the active rules and upcoming removal clearly. Keep statistics separate from standard play.
+
+Stage 27C adds position analysis for the selected ruleset: distinguish proven win/loss/draw and exact moves-to-result from heuristic estimates, search-depth bounds, remaining empty cells and unknown results. Only claim perfect-play outcome/remaining turns when exhaustive search or a verified ruleset-specific solver proves it. Account for cycles/removal mechanics; a time-limited CPU estimate is not proof. Never label remaining empty cells as guaranteed turns remaining.
+
+Optional variety proposal: a seeded “shifting board” mode announces a randomly selected column removal one turn ahead, with deterministic replay of the seed. This changes the planning problem and adds uncertainty; do not claim it makes the game mathematically unsolvable. Prototype and compare fairness, pacing and CPU handling before adopting it. Confirm whether the user wants randomness or a fully deterministic variant. Validate rules with hand-checked positions and independent win-detection tests before expanding AI strength.
+
 ## Verification
+
+Latest refinements (2026-11-12): active Priority uses animated gold lettering or a filled star, with a static gold appearance under reduced-motion preferences. Both block and editor Cancel actions preserve page scroll and return keyboard focus to the note's Edit control without scrolling (or Add when the note is filtered out). All 406 browser assertions and downloaded JSON verification pass, including top/scrolled cancellation and reduced-motion checks.
 
 Prerequisites: Windows PowerShell 5.1+ and installed Google Chrome or Microsoft Edge. No Node, Python, packages or app build are required. From the repository root, run:
 

@@ -9,6 +9,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const add = $('#add-button');
     const filter = $('#tag-filter');
     let activeFilter = '';
+    let searchQuery = '';
+    let priorityView = false;
+    let searchReturnFocus = null;
     const compactFilters = window.matchMedia('(max-width: 640px)');
     let blocks = [];
     let editing = null;
@@ -17,7 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let noteColorControl;
     let storageBlocked = false;
     let dragging = null;
+    let iconMode = false;
     const openQR = new WeakSet();
+    const pinnedQR = new WeakSet();
     const qrViews = new WeakMap();
     const chipTargets = new WeakMap();
     const notify = message => { $('#status').textContent = message; };
@@ -94,7 +99,14 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#cancel-edit').hidden = true;
         updateDetectedLinks();
     }
-    async function copy(value) {
+    const copyTimers = new Map();
+    const copyRequests = new WeakMap();
+    function clearCopyFeedback(card) {
+        clearTimeout(copyTimers.get(card)); copyTimers.delete(card);
+        card.querySelector('.copy-overlay')?.remove();
+    }
+    async function copy(value, card) {
+        const request = {}; copyRequests.set(card, request); clearCopyFeedback(card);
         try {
             if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(value);
             else {
@@ -105,13 +117,73 @@ document.addEventListener('DOMContentLoaded', () => {
                 try { if (!document.execCommand('copy')) throw new Error('Copy failed'); }
                 finally { field.remove(); focused?.focus(); }
             }
+            if (!card.isConnected || copyRequests.get(card) !== request) return;
+            const overlay = document.createElement('span'); overlay.className = 'copy-overlay';
+            overlay.textContent = 'Copied!'; overlay.setAttribute('aria-hidden', 'true');
+            card.append(overlay);
+            copyTimers.set(card, setTimeout(() => clearCopyFeedback(card), 1500));
             notify('Copied!');
-        } catch { notify('Copy failed. Check clipboard permissions or select and copy the text manually.'); }
+        } catch {
+            if (!card.isConnected || copyRequests.get(card) !== request) return;
+            clearCopyFeedback(card);
+            notify('Copy failed. Check clipboard permissions or select and copy the text manually.');
+        }
     }
     function button(label, action) {
         const b = document.createElement('button'); b.type = 'button'; b.textContent = label;
         b.addEventListener('click', event => { event.stopPropagation(); action(); }); return b;
     }
+    const actionPaths = {
+        Priority: 'm12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z',
+        Copy: 'M8 8h12v12H8z M16 8V4H4v12h4',
+        Edit: 'm4 16 12-12 4 4-12 12H4z M13 7l4 4',
+        Delete: 'M3 6h18 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7',
+        Save: 'M4 3h13l4 4v14H3V3z M7 3v6h10V3 M7 21v-8h10v8',
+        Cancel: 'm5 5 14 14 M19 5 5 19',
+        'Show QR': 'M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M15 13v8 M12 16h9 M18 19h3',
+        'Hide QR': 'M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M14 17h8'
+    };
+    function presentAction(control, label = control.dataset.label) {
+        control.dataset.label = label;
+        control.setAttribute('aria-label', label === 'Save' ? 'Save changes' : label);
+        control.title = label === 'Save' ? 'Save changes' : label;
+        control.classList.toggle('danger-action', label === 'Delete' || label === 'Cancel');
+        control.classList.toggle('icon-action', iconMode);
+        control.replaceChildren();
+        if (iconMode) {
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+            svg.setAttribute('focusable', 'false');
+            const path = document.createElementNS(svg.namespaceURI, 'path'); path.setAttribute('d', actionPaths[label]);
+            svg.append(path); control.append(svg);
+        } else control.textContent = label;
+    }
+    function actionButton(label, action) {
+        const control = button(label, action); presentAction(control, label); return control;
+    }
+    function updateActionStyle() {
+        $('#action-style-button').textContent = iconMode ? 'Use words' : 'Use icons';
+        $('#action-style-button').setAttribute('aria-pressed', String(iconMode));
+        list.querySelectorAll('button[data-label]').forEach(control => presentAction(control));
+        updatePriorityControl();
+    }
+    function updatePriorityControl() {
+        const control = $('#priority-toggle');
+        presentAction(control, 'Priority');
+        control.setAttribute('aria-pressed', String(priorityView));
+        control.setAttribute('aria-label', priorityView ? 'Priority view: switch to custom order' : 'Show priority view');
+        control.title = priorityView ? 'Show your custom arrangement' : 'View by P0–P99 tags without changing your arrangement';
+    }
+    $('#priority-toggle').addEventListener('click', () => {
+        endMove(false, false); priorityView = !priorityView; updatePriorityControl(); render();
+    });
+    function priorityOf(block) {
+        const values = block.tags.filter(tag => /^p(?:0|[1-9]\d?)$/i.test(tag)).map(tag => Number(tag.slice(1)));
+        return values.length ? Math.min(...values) : Infinity;
+    }
+    $('#action-style-button').addEventListener('click', () => {
+        iconMode = !iconMode; write('actionIconMode', String(iconMode)); updateActionStyle();
+    });
     function linksIn(value) {
         const links = new Set();
         // Explicit HTTP(S), at a word boundary; never interpret the body as HTML.
@@ -137,7 +209,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return [...links];
     }
     function linkList(urls) {
-        const items = document.createElement('ul'); items.className = 'link-list';
+        const items = document.createElement(urls.length > 1 ? 'ol' : 'ul'); items.className = 'link-list';
         for (const url of urls) {
             const item = document.createElement('li');
             const link = document.createElement('a');
@@ -155,6 +227,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const urls = linksIn(text.value);
         const preview = $('#detected-links-list');
         preview.replaceChildren(...linkList(urls).children);
+        preview.style.listStyleType = urls.length > 1 ? 'decimal' : 'disc';
         preview.hidden = !urls.length;
         $('#no-detected-links').hidden = !!urls.length;
     }
@@ -162,20 +235,83 @@ document.addEventListener('DOMContentLoaded', () => {
         const cached = qrViews.get(block);
         if (cached && cached.text === block.text && cached.title === block.title) return cached.element;
         const element = document.createElement('div'); element.className = 'qr-view';
-        try {
-            element.append(window.CopyBlocksQR.createCanvas(block.text, block.title));
-            const caption = document.createElement('p');
-            caption.textContent = 'Scan to read the full block text.';
-            element.append(caption);
-        } catch (error) {
-            const message = document.createElement('p'); message.className = 'qr-error';
-            message.setAttribute('role', 'status');
-            message.textContent = error.message || 'Could not generate this QR code. Copying still works.';
-            element.append(message);
+        element.setAttribute('role', 'region'); element.setAttribute('aria-label', `QR codes for ${block.title}`);
+        element.addEventListener('click', event => event.stopPropagation());
+        element.addEventListener('pointerdown', event => event.stopPropagation());
+        const controls = document.createElement('div'); controls.className = 'qr-controls';
+        const selector = document.createElement('select'); selector.setAttribute('aria-label', `QR content for ${block.title}`);
+        const urls = linksIn(block.text);
+        ['Full text QR', ...urls.map((_, i) => urls.length > 1 ? `Link ${i + 1}` : 'Link')].forEach((label, i) => {
+            const option = document.createElement('option'); option.value = i; option.textContent = label; selector.append(option);
+        });
+        selector.value = urls.length ? '1' : '0';
+        const pin = button('', () => {
+            if (pinnedQR.has(block)) pinnedQR.delete(block); else pinnedQR.add(block);
+            updatePin();
+        }); pin.className = 'qr-pin';
+        const pinSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        pinSvg.setAttribute('viewBox', '0 0 24 24'); pinSvg.setAttribute('aria-hidden', 'true');
+        const pinPath = document.createElementNS(pinSvg.namespaceURI, 'path');
+        pinPath.setAttribute('d', 'M8 3h8 M9 3v7l-3 4h12l-3-4V3 M12 14v7');
+        pinSvg.append(pinPath); pin.append(pinSvg);
+        function updatePin() {
+            pin.setAttribute('aria-pressed', String(pinnedQR.has(block)));
+            pin.setAttribute('aria-label', pinnedQR.has(block) ? 'Unpin QR' : 'Pin QR');
+            pin.title = pinnedQR.has(block) ? 'Unpin QR to allow outside-click and Escape dismissal' : 'Pin QR open';
         }
+        updatePin();
+        const close = button('×', () => closeQR(block)); close.className = 'qr-close';
+        close.setAttribute('aria-label', 'Close QR'); close.title = 'Close QR';
+        controls.append(pin, selector, close);
+        const content = document.createElement('div'); content.className = 'qr-content';
+        element.append(controls, content);
+        function showCode() {
+            content.replaceChildren();
+            const index = Number(selector.value);
+            try {
+                const payload = index ? urls[index - 1] : block.text;
+                const canvas = window.CopyBlocksQR.createCanvas(payload, block.title);
+                if (index) canvas.setAttribute('aria-label', `${selector.selectedOptions[0].textContent} QR for ${block.title}: ${urls[index - 1]}`);
+                const copyCode = button('', () => copy(payload, element.closest('.text-block')));
+                copyCode.className = 'qr-copy'; copyCode.setAttribute('aria-label', `Copy ${selector.selectedOptions[0].textContent} content`);
+                copyCode.title = 'Copy the text represented by this QR code'; copyCode.append(canvas);
+                content.append(copyCode);
+            } catch (error) {
+                const message = document.createElement('p'); message.className = 'qr-error'; message.setAttribute('role', 'status');
+                message.textContent = error.message || 'Could not generate this QR code. Copying still works.'; content.append(message);
+            }
+        }
+        selector.addEventListener('change', showCode); showCode();
         qrViews.set(block, { text: block.text, title: block.title, element });
         return element;
     }
+    function closeQR(block, focus = true) {
+        const view = qrViews.get(block)?.element;
+        const opener = view?.closest('.text-block')?.querySelector('.block-code-actions button');
+        openQR.delete(block); pinnedQR.delete(block); qrViews.delete(block); view?.remove();
+        if (opener) { presentAction(opener, 'Show QR'); opener.setAttribute('aria-expanded', 'false'); if (focus) opener.focus({ preventScroll: true }); }
+    }
+    let qrOutside = [];
+    document.addEventListener('pointerdown', event => {
+        qrOutside = event.isPrimary && event.button === 0 ? blocks.filter(block => {
+            const view = qrViews.get(block)?.element;
+            return !pinnedQR.has(block) && view?.isConnected && !view.contains(event.target);
+        }) : [];
+        if (qrOutside.length && !event.target.closest('.qr-view')) {
+            event.preventDefault(); event.stopPropagation();
+        }
+    }, true);
+    document.addEventListener('pointercancel', () => { qrOutside = []; }, true);
+    document.addEventListener('click', event => {
+        const dismiss = qrOutside.filter(block => !qrViews.get(block)?.element.contains(event.target)); qrOutside = [];
+        if (!dismiss.length) return;
+        event.preventDefault(); event.stopPropagation(); dismiss.forEach(block => closeQR(block));
+    }, true);
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || $('#backups-dialog').open) return;
+        const open = blocks.filter(block => !pinnedQR.has(block) && qrViews.get(block)?.element.isConnected);
+        if (open.length) { event.preventDefault(); open.forEach(block => closeQR(block)); }
+    });
     function renderTagFilters() {
         const focusedKey = document.activeElement.dataset?.tagFilter;
         const counts = new Map();
@@ -230,66 +366,193 @@ document.addEventListener('DOMContentLoaded', () => {
             (replacement || $('#all-tags')).focus({ preventScroll: true });
         }
     }
+    const announceMove = message => { $('#reorder-status').textContent = message; };
+    function endMove(commit = false, focus = true) {
+        if (!dragging) return;
+        const move = dragging; dragging = null;
+        cancelAnimationFrame(move.frame);
+        if (move.handle.hasPointerCapture(move.pointerId)) move.handle.releasePointerCapture(move.pointerId);
+        move.card.classList.remove('dragging');
+        for (const key of ['width', 'height', 'left', 'top']) move.card.style[key] = '';
+        move.placeholder.replaceWith(move.card);
+        move.handle.setAttribute('aria-pressed', 'false');
+        let saved = false;
+        if (commit && move.position !== move.from && !editing && !activeFilter && !searchQuery && !priorityView) {
+            const reordered = blocks.filter(block => block !== move.block);
+            reordered.splice(move.position, 0, move.block);
+            if (write('textBlocks', JSON.stringify(reordered))) { blocks = reordered; saved = true; }
+        }
+        announceMove(saved ? `Moved ${move.block.title} to position ${move.position + 1} of ${blocks.length}.` : 'Reordering cancelled; order unchanged.');
+        if (saved) render();
+        else {
+            // Restore the original DOM position after a cancelled preview.
+            const siblings = [...list.querySelectorAll('.text-block')].filter(card => card !== move.card);
+            list.insertBefore(move.card, siblings[move.from] || null);
+        }
+        if (focus) list.querySelector(`[data-index="${blocks.indexOf(move.block)}"] .drag-handle`)?.focus({ preventScroll: true });
+    }
+    function placeMove(position) {
+        if (!dragging) return;
+        const move = dragging;
+        move.position = Math.max(0, Math.min(blocks.length - 1, position));
+        const cards = [...list.querySelectorAll('.text-block')].filter(card => card !== move.card);
+        list.insertBefore(move.placeholder, cards[move.position] || null);
+        if (move.pointerId === undefined) {
+            move.placeholder.scrollIntoView({ block: 'nearest' });
+            const rect = move.placeholder.getBoundingClientRect();
+            move.card.style.left = `${rect.left}px`; move.card.style.top = `${rect.top}px`;
+        }
+        announceMove(`${move.block.title}: position ${move.position + 1} of ${blocks.length}. Space or Enter drops; Escape cancels.`);
+    }
+    function pointerDestination(x, y) {
+        const move = dragging;
+        if (!move) return false;
+        const bounds = list.getBoundingClientRect();
+        const valid = x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom && y >= 0 && y <= innerHeight;
+        move.valid = valid;
+        move.placeholder.classList.toggle('invalid-drop', !valid);
+        if (!valid) return false;
+        const hole = move.placeholder.getBoundingClientRect();
+        if (x >= hole.left && x <= hole.right && y >= hole.top && y <= hole.bottom) return true;
+        const cards = [...list.querySelectorAll('.text-block')].filter(card => card !== move.card);
+        let closest, distance = Infinity;
+        cards.forEach((card, index) => {
+            const rect = card.getBoundingClientRect();
+            const dx = Math.max(rect.left - x, 0, x - rect.right);
+            const dy = Math.max(rect.top - y, 0, y - rect.bottom);
+            const score = dx * dx + dy * dy;
+            if (score < distance) { distance = score; closest = { rect, index }; }
+        });
+        if (closest) {
+            const { rect, index } = closest;
+            const columns = getComputedStyle(list).gridTemplateColumns.split(' ').length;
+            const after = y > rect.bottom || (y >= rect.top && (columns === 1 ? y > (rect.top + rect.bottom) / 2 : x > (rect.left + rect.right) / 2));
+            const position = index + Number(after);
+            if (position !== move.position) placeMove(position);
+        }
+        return true;
+    }
+    function startMove(block, card, handle, event) {
+        if (editing || activeFilter || searchQuery || priorityView || blocks.length < 2 || dragging) return;
+        const rect = card.getBoundingClientRect();
+        const placeholder = document.createElement('div'); placeholder.className = 'drop-placeholder';
+        placeholder.style.height = `${rect.height}px`; placeholder.setAttribute('aria-hidden', 'true');
+        card.before(placeholder);
+        dragging = { block, card, handle, placeholder, from: blocks.indexOf(block), position: blocks.indexOf(block),
+            pointerId: event?.pointerId, x: event?.clientX, y: event?.clientY, offsetX: (event?.clientX ?? rect.left) - rect.left,
+            offsetY: (event?.clientY ?? rect.top) - rect.top, valid: true };
+        card.style.width = `${rect.width}px`; card.style.height = `${rect.height}px`;
+        card.style.left = `${rect.left}px`; card.style.top = `${rect.top}px`;
+        card.classList.add('dragging'); handle.setAttribute('aria-pressed', 'true');
+        handle.focus({ preventScroll: true });
+        if (event) {
+            handle.setPointerCapture(event.pointerId);
+            const scroll = () => {
+                if (!dragging) return;
+                const move = dragging, bounds = list.getBoundingClientRect();
+                if (move.x >= bounds.left && move.x <= bounds.right) {
+                    const delta = move.y < 60 ? -14 : move.y > innerHeight - 60 ? 14 : 0;
+                    if (delta) { window.scrollBy(0, delta); pointerDestination(move.x, move.y); }
+                }
+                move.frame = requestAnimationFrame(scroll);
+            };
+            dragging.frame = requestAnimationFrame(scroll);
+        }
+        announceMove(`Picked up ${block.title}, position ${dragging.from + 1} of ${blocks.length}. Use arrows to move; Escape cancels.`);
+    }
+    function wireHandle(block, card, handle) {
+        handle.addEventListener('pointerdown', event => {
+            if (event.button !== 0 || !event.isPrimary || handle.disabled) return;
+            event.preventDefault(); event.stopPropagation(); startMove(block, card, handle, event);
+        });
+        handle.addEventListener('pointermove', event => {
+            if (!dragging || dragging.pointerId !== event.pointerId) return;
+            dragging.x = event.clientX; dragging.y = event.clientY;
+            card.style.left = `${event.clientX - dragging.offsetX}px`; card.style.top = `${event.clientY - dragging.offsetY}px`;
+            pointerDestination(event.clientX, event.clientY);
+        });
+        handle.addEventListener('pointerup', event => {
+            if (dragging?.pointerId !== event.pointerId) return;
+            const bounds = list.getBoundingClientRect();
+            const valid = dragging.valid && event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= Math.max(0, bounds.top) && event.clientY <= Math.min(innerHeight, bounds.bottom);
+            endMove(valid);
+        });
+        for (const kind of ['pointercancel', 'lostpointercapture']) handle.addEventListener(kind, () => { if (dragging?.handle === handle) endMove(); });
+        handle.addEventListener('keydown', event => {
+            if (handle.disabled) return;
+            if (event.key === ' ' || event.key === 'Enter') {
+                event.preventDefault(); if (event.repeat) return;
+                if (dragging) endMove(true); else startMove(block, card, handle);
+            } else if (dragging?.handle === handle && event.key.startsWith('Arrow')) {
+                event.preventDefault();
+                const columns = getComputedStyle(list).gridTemplateColumns.split(' ').length;
+                const offset = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -columns, ArrowDown: columns }[event.key];
+                placeMove(dragging.position + offset);
+            } else if (dragging && (event.key === 'Escape' || event.key === 'Tab')) {
+                if (event.key === 'Escape') event.preventDefault(); endMove();
+            }
+        });
+    }
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && dragging) { event.preventDefault(); endMove(); } });
+    window.addEventListener('blur', () => endMove(false, false));
+    window.addEventListener('resize', () => endMove());
+    document.addEventListener('visibilitychange', () => { if (document.hidden) endMove(false, false); });
     function render() {
+        for (const card of copyTimers.keys()) clearCopyFeedback(card);
+        endMove(false, false);
         const focusedChip = chipTargets.get(document.activeElement);
         let restoredChip = null;
         const blockLinks = new Map(blocks.map(block => [block, linksIn(block.text)]));
         renderTagFilters();
-        const matchesFilter = block => !activeFilter || tags(block).includes(activeFilter.slice(4));
+        const matchesFilter = block => (!activeFilter || tags(block).includes(activeFilter.slice(4))) &&
+            (!searchQuery || [block.title, block.text, ...block.tags].some(value => value.toLowerCase().includes(searchQuery)));
         const matchingCount = blocks.filter(matchesFilter).length;
         const editingException = editing && !matchesFilter(editing);
         const displayBlocks = blocks.map((block, index) => ({ block, index }));
+        if (priorityView) displayBlocks.sort((a, b) => priorityOf(a.block) - priorityOf(b.block) || a.index - b.index);
         const editIndex = displayBlocks.findIndex(entry => entry.block === editing);
         if (editIndex >= 0) displayBlocks.unshift(...displayBlocks.splice(editIndex, 1));
         list.replaceChildren();
         displayBlocks.forEach(({ block, index }) => {
             if (block !== editing && !matchesFilter(block)) return;
             const card = document.createElement('article'); card.className = 'text-block';
-            card.style.backgroundColor = block.color; card.draggable = !activeFilter && !editing;
+            card.style.backgroundColor = block.color; card.draggable = false;
             card.style.color = foregroundFor(block.color);
             card.dataset.index = index;
             if (block === editing) {
                 card.classList.add('is-editing');
                 card.setAttribute('aria-label', `${block.title} — Editing`);
-                const badge = button(editingException ? 'Editing — shown outside the current filter' : 'Editing', () => {
-                    add.click();
-                    if (!editing) text.focus({ preventScroll: true });
-                });
-                badge.className = 'editing-badge'; badge.dataset.action = 'save';
-                badge.setAttribute('aria-label', `Save changes to ${block.title}`);
-                badge.title = 'Save changes';
-                card.append(badge);
+                if (editingException) {
+                    const exception = document.createElement('p'); exception.className = 'filter-exception';
+                    exception.textContent = 'Shown outside the current filter'; card.append(exception);
+                }
             }
             const heading = document.createElement('h2'); heading.className = 'block-title'; heading.textContent = block.title;
             const content = document.createElement('div'); content.className = 'text-content'; content.textContent = block.text;
             const actions = document.createElement('div'); actions.className = 'block-actions block-top-actions';
             const footer = document.createElement('div'); footer.className = 'block-footer';
             const codeActions = document.createElement('div'); codeActions.className = 'block-actions block-code-actions';
-            const moveActions = document.createElement('div'); moveActions.className = 'block-actions block-move-actions';
-            footer.append(codeActions, moveActions);
-            actions.append(button('Copy', () => copy(block.text)), button('Edit', () => {
+            const handle = button('⠿ Reorder', () => {}); handle.className = 'drag-handle';
+            handle.setAttribute('aria-label', `Reorder ${block.title}`);
+            handle.setAttribute('aria-describedby', 'reorder-help'); handle.setAttribute('aria-pressed', 'false');
+            handle.disabled = !!editing || !!activeFilter || !!searchQuery || priorityView || blocks.length < 2;
+            handle.title = priorityView ? 'Switch off Priority to arrange notes.' : editing ? 'Finish editing before reordering.' : activeFilter || searchQuery ? 'Clear search and tag filters to reorder.' : 'Drag to reorder, or use Space and arrow keys.';
+            wireHandle(block, card, handle);
+            footer.append(codeActions, handle);
+            actions.append(actionButton('Copy', () => copy(block.text, card)), actionButton(block === editing ? 'Save' : 'Edit', () => {
+                if (block === editing) { add.click(); if (!editing) text.focus({ preventScroll: true }); return; }
                 if (!editing) creatorColor = selectedColor;
                 editing = block; title.value = block.title; text.value = block.text; chooseColor(block.color);
                 tagInput.value = block.tags.join(', ');
                 updateDetectedLinks();
-                dragging = null;
                 add.textContent = 'Save Changes'; $('#cancel-edit').hidden = false;
                 render(); text.focus({ preventScroll: true });
-            }), button('Delete', () => {
+            }), actionButton(block === editing ? 'Cancel' : 'Delete', () => {
+                if (block === editing) { $('#cancel-edit').click(); return; }
                 if (!confirm(`Delete "${block.title}"?`)) return;
                 if (editing === block) resetEditor();
                 blocks.splice(index, 1); save(); render();
             }));
-            for (const [label, offset] of [['Move up', -1], ['Move down', 1]]) {
-                const move = button(label, () => {
-                    if (editing || activeFilter) return;
-                    [blocks[index], blocks[index + offset]] = [blocks[index + offset], blocks[index]];
-                    save(); render();
-                });
-                move.disabled = !!editing || !!activeFilter || index + offset < 0 || index + offset >= blocks.length;
-                if (editing) move.title = 'Finish editing before reordering blocks.';
-                moveActions.append(move);
-            }
             card.prepend(actions);
             card.append(heading, content);
             const colorLabel = button(block.color.toUpperCase(), () => chooseColor(block.color));
@@ -328,42 +591,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 card.append(links);
             }
             card.append(footer);
-            const qrButton = button(openQR.has(block) ? 'Hide QR' : 'Show QR', () => {
+            const qrButton = actionButton(openQR.has(block) ? 'Hide QR' : 'Show QR', () => {
                 if (openQR.has(block)) {
-                    openQR.delete(block); qrViews.delete(block);
-                    card.querySelector('.qr-view')?.remove();
+                    closeQR(block);
                 } else {
                     openQR.add(block); card.insertBefore(qrView(block), footer);
+                    card.querySelector('.qr-view select').focus({ preventScroll: true });
                 }
-                qrButton.textContent = openQR.has(block) ? 'Hide QR' : 'Show QR';
+                presentAction(qrButton, openQR.has(block) ? 'Hide QR' : 'Show QR');
                 qrButton.setAttribute('aria-expanded', String(openQR.has(block)));
             });
             qrButton.setAttribute('aria-expanded', String(openQR.has(block)));
             codeActions.append(qrButton);
             if (openQR.has(block)) card.insertBefore(qrView(block), footer);
-            card.addEventListener('click', () => copy(block.text));
-            // A draggable ancestor must not turn a chip press into a card drag.
-            card.addEventListener('pointerdown', event => {
-                card.draggable = !editing && !activeFilter && !event.target.closest('.tag-chip, .note-color-value');
-            });
-            for (const eventName of ['pointerup', 'pointercancel']) {
-                card.addEventListener(eventName, () => { card.draggable = !editing && !activeFilter; });
-            }
-            card.addEventListener('dragstart', event => {
-                if (!card.draggable) { event.preventDefault(); return; }
-                dragging = block; card.classList.add('dragging'); event.dataTransfer.setData('text/plain', String(index));
-            });
-            card.addEventListener('dragend', () => { dragging = null; card.classList.remove('dragging'); });
-            card.addEventListener('dragover', event => { if (dragging && !editing && !activeFilter) event.preventDefault(); });
-            card.addEventListener('drop', event => {
-                event.preventDefault();
-                if (!dragging || dragging === block || editing || activeFilter) return;
-                const from = blocks.indexOf(dragging);
-                blocks.splice(from, 1); blocks.splice(index, 0, dragging); dragging = null; save(); render();
-            });
+            card.addEventListener('click', () => copy(block.text, card));
+            card.addEventListener('dragstart', event => event.preventDefault());
             list.append(card);
         });
         $('#empty-state').hidden = list.children.length > 0;
+        $('#empty-state').textContent = searchQuery || activeFilter ? 'No notes match. Try another search or clear the filters.' : 'No blocks to show. Add a text block above.';
         $('#block-count').textContent = `${matchingCount} of ${blocks.length} blocks${editingException ? ' match the filter (+1 editing block)' : ''}`;
         if (focusedChip) (restoredChip || $('#all-tags')).focus({ preventScroll: true });
     }
@@ -374,8 +620,40 @@ document.addEventListener('DOMContentLoaded', () => {
         if (editing) Object.assign(editing, value); else blocks.push(value);
         resetEditor(); save(); render();
     });
-    $('#cancel-edit').addEventListener('click', () => { resetEditor(); render(); title.focus(); });
+    $('#cancel-edit').addEventListener('click', () => {
+        const block = editing, x = window.scrollX, y = window.scrollY;
+        resetEditor(); render();
+        const editButton = list.querySelector(`[data-index="${blocks.indexOf(block)}"] [data-label="Edit"]`);
+        (editButton || add).focus({ preventScroll: true });
+        window.scrollTo(x, y);
+    });
     text.addEventListener('input', updateDetectedLinks);
+    const searchInput = $('#note-search');
+    function openSearch() {
+        if (document.querySelector('dialog[open]')) return false;
+        if ($('#note-search-panel').hidden) searchReturnFocus = document.activeElement;
+        endMove(false, false);
+        $('#note-search-panel').hidden = false; $('#search-button').setAttribute('aria-expanded', 'true');
+        searchInput.focus(); searchInput.select(); return document.activeElement === searchInput;
+    }
+    function closeSearch() {
+        searchQuery = ''; searchInput.value = ''; $('#note-search-panel').hidden = true;
+        $('#search-button').setAttribute('aria-expanded', 'false'); render();
+        (searchReturnFocus?.isConnected ? searchReturnFocus : $('#search-button')).focus({ preventScroll: true });
+        searchReturnFocus = null;
+    }
+    $('#search-button').addEventListener('click', openSearch);
+    $('#close-search').addEventListener('click', closeSearch);
+    searchInput.addEventListener('input', () => { searchQuery = searchInput.value.trim().toLowerCase(); render(); });
+    document.addEventListener('keydown', event => {
+        if (document.querySelector('dialog[open]')) return;
+        if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f') {
+            if (!$('#note-search-panel').hidden && document.activeElement === searchInput) return;
+            if (openSearch()) event.preventDefault();
+        } else if (event.key === 'Escape' && !$('#note-search-panel').hidden && !event.target.closest('.qr-view')) {
+            event.preventDefault(); closeSearch();
+        }
+    });
     $('#all-tags').addEventListener('click', () => { activeFilter = ''; render(); });
     $('#tag-search').addEventListener('input', renderTagFilters);
     compactFilters.addEventListener('change', render);
@@ -385,33 +663,58 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.style.backgroundColor = color; write('preferredColor', color);
     });
     document.body.style.backgroundColor = backgroundColor;
-    function collapse() {
-        document.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('show'));
-        $('#layout-button').setAttribute('aria-expanded', 'false');
+    const densitySlider = $('#density-slider');
+    const savedDensity = Number(read('preferredColumns'));
+    let preferredDensity = Number.isSafeInteger(savedDensity) && savedDensity >= 1 ? savedDensity : 3;
+    let effectiveDensity = 0;
+    function updateDensity() {
+        const gap = parseFloat(getComputedStyle(list).columnGap) || 15;
+        const maximum = compactFilters.matches ? 1 : Math.max(1, Math.floor((list.clientWidth + gap) / (280 + gap)));
+        const effective = Math.min(preferredDensity, maximum);
+        if (effective !== effectiveDensity) endMove(false, false);
+        effectiveDensity = effective;
+        densitySlider.max = maximum; densitySlider.value = effective;
+        densitySlider.setAttribute('aria-valuetext', `${effective} ${effective === 1 ? 'column' : 'columns'}`);
+        $('#density-value').textContent = effective;
+        densitySlider.title = `Columns: ${effective} of ${maximum} available`;
+        list.style.setProperty('--columns', effective);
     }
-    for (const kind of ['layout']) {
-        const trigger = $(`#${kind}-button`); const menu = $(`.${kind}-dropdown`);
-        trigger.setAttribute('aria-expanded', 'false');
-        trigger.addEventListener('click', event => {
-            event.stopPropagation(); const open = !menu.classList.contains('show'); collapse();
-            menu.classList.toggle('show', open); trigger.setAttribute('aria-expanded', String(open));
-        });
-    }
-    document.addEventListener('click', collapse);
-    document.addEventListener('keydown', event => {
-        if (event.key === 'Escape') collapse();
-        if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('.layout-option')) {
-            event.preventDefault(); event.target.click();
-        }
+    densitySlider.addEventListener('input', () => {
+        endMove(false, false);
+        preferredDensity = Number(densitySlider.value);
+        write('preferredColumns', String(preferredDensity)); updateDensity();
     });
-    document.querySelectorAll('.layout-option').forEach(option => { option.tabIndex = 0; option.setAttribute('role', 'button'); });
-    document.querySelectorAll('.layout-option').forEach(option => option.addEventListener('click', () => {
-        list.style.setProperty('--columns', option.dataset.columns); write('preferredColumns', option.dataset.columns);
-    }));
+    const densityObserver = new ResizeObserver(updateDensity);
+    densityObserver.observe(list);
+    compactFilters.addEventListener('change', updateDensity);
+    updateDensity();
     const backupDialog = $('#backups-dialog');
     const backupStatus = message => { $('#backup-status').textContent = message; };
     let pendingImport = null;
     let importVersion = 0;
+    let backdropPress = null;
+    let backdropClick = false;
+    function outsideBackups(event) {
+        const bounds = backupDialog.getBoundingClientRect();
+        return event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom;
+    }
+    function closeBackups() {
+        cancelImport(); backdropPress = null; backdropClick = false; backupDialog.close();
+    }
+    backupDialog.addEventListener('pointerdown', event => {
+        backdropClick = false;
+        backdropPress = event.isPrimary && event.button === 0 && outsideBackups(event) ? event.pointerId : null;
+    });
+    backupDialog.addEventListener('pointerup', event => {
+        backdropClick = backdropPress === event.pointerId && outsideBackups(event);
+        backdropPress = null;
+    });
+    backupDialog.addEventListener('pointercancel', () => { backdropPress = null; backdropClick = false; });
+    backupDialog.addEventListener('click', event => {
+        const dismiss = backdropClick && event.target === backupDialog && outsideBackups(event);
+        backdropClick = false;
+        if (dismiss) { event.preventDefault(); event.stopPropagation(); closeBackups(); }
+    });
     function cancelImport() {
         importVersion++;
         pendingImport = null;
@@ -422,10 +725,10 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#backups-button').addEventListener('click', () => {
         cancelImport(); backupStatus(''); backupDialog.showModal(); $('#export-button').focus();
     });
-    $('#close-backups').addEventListener('click', () => backupDialog.close());
+    $('#close-backups').addEventListener('click', closeBackups);
     backupDialog.addEventListener('close', () => {
         if (backupDialog.open) return;
-        cancelImport(); $('#backups-button').focus({ preventScroll: true });
+        cancelImport(); backdropPress = null; backdropClick = false; $('#backups-button').focus({ preventScroll: true });
     });
     backupDialog.addEventListener('cancel', () => cancelImport());
     $('#cancel-import').addEventListener('click', () => {
@@ -480,7 +783,6 @@ document.addEventListener('DOMContentLoaded', () => {
         try { blocks = validate(JSON.parse(saved)); }
         catch { storageBlocked = true; notify('Saved data could not be read and has been left untouched. Import a valid backup to recover.'); }
     }
-    const columns = read('preferredColumns');
-    if (['1', '2', '3'].includes(columns)) list.style.setProperty('--columns', columns);
+    iconMode = read('actionIconMode') === 'true'; updateActionStyle();
     chooseColor(selectedColor); render();
 });
