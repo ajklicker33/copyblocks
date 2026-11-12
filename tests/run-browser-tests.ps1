@@ -25,7 +25,7 @@ try {
     if ($ForceFailure) { $testUrl += '?forceFailure=1' }
     $stdout = Join-Path $runRoot 'stdout.txt'
     $stderr = Join-Path $runRoot 'stderr.txt'
-    $arguments = @('--headless', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+    $arguments = @('--headless', '--window-size=1400,1000', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
         '--allow-file-access-from-files', ('--user-data-dir="' + $profile + '"'),
         '--remote-debugging-port=0', ('"' + $testUrl + '"'))
     $browserProcess = Start-Process -FilePath $BrowserPath -ArgumentList $arguments -WindowStyle Hidden `
@@ -69,7 +69,7 @@ try {
         } finally { $cancel.Dispose() }
     }
     do {
-        $evaluation = Invoke-PageCommand 'Runtime.evaluate' @{expression='JSON.stringify({status:document.querySelector("#results")?.dataset.status, html:document.documentElement.outerHTML, key:window.testKey, motion:window.testMotion})'; returnByValue=$true}
+        $evaluation = Invoke-PageCommand 'Runtime.evaluate' @{expression='JSON.stringify({status:document.querySelector("#results")?.dataset.status, html:document.documentElement.outerHTML, key:window.testKey, pointer:window.testPointer, motion:window.testMotion})'; returnByValue=$true}
         $state = $evaluation.result.value | ConvertFrom-Json
         if ($state.motion) {
             if ($state.motion -notin @('reduce', 'no-preference')) { throw 'Unsupported motion preference.' }
@@ -77,16 +77,29 @@ try {
             $null = Invoke-PageCommand 'Runtime.evaluate' @{expression='window.testMotion = null'}
         }
         if ($state.key) {
-            if ($state.key -notin @('Enter', 'Space', 'Tab', 'Escape')) { throw 'Unsupported test key request.' }
-            $keyCode = if ($state.key -eq 'Enter') { 13 } elseif ($state.key -eq 'Tab') { 9 } elseif ($state.key -eq 'Escape') { 27 } else { 32 }
+            $keyCodes = @{Enter=13; Space=32; Tab=9; Escape=27; Home=36; End=35; ArrowLeft=37; ArrowUp=38; ArrowRight=39; ArrowDown=40; 'Ctrl+F'=70}
+            if (!$keyCodes.ContainsKey($state.key)) { throw 'Unsupported test key request.' }
+            $keyCode = $keyCodes[$state.key]
             $keyValue = if ($state.key -eq 'Space') { ' ' } else { $state.key }
             $null = Invoke-PageCommand 'Page.bringToFront' @{}
             foreach ($keyType in @('keyDown', 'keyUp')) {
                 $keyParams = @{type=$keyType; key=$keyValue; code=$state.key; windowsVirtualKeyCode=$keyCode}
+                if ($state.key -eq 'Ctrl+F') { $keyParams.key = 'f'; $keyParams.code = 'KeyF'; $keyParams.modifiers = 2 }
                 if ($keyType -eq 'keyDown' -and $state.key -in @('Enter', 'Space')) { $keyParams.text = if ($state.key -eq 'Enter') { "`r" } else { ' ' } }
                 $null = Invoke-PageCommand 'Input.dispatchKeyEvent' $keyParams
             }
             $null = Invoke-PageCommand 'Runtime.evaluate' @{expression='window.testKey = null'}
+        }
+        if ($state.pointer) {
+            $p = $state.pointer
+            if ($p.type -in @('mousePressed', 'mouseMoved', 'mouseReleased')) {
+                $null = Invoke-PageCommand 'Input.dispatchMouseEvent' @{type=$p.type; x=[double]$p.x; y=[double]$p.y; button='left'; buttons=$(if ($p.type -eq 'mouseReleased') { 0 } else { 1 }); clickCount=1}
+            } elseif ($p.type -in @('touchStart', 'touchMove', 'touchEnd', 'touchCancel')) {
+                $points = @()
+                if ($p.type -in @('touchStart', 'touchMove')) { $points = @(@{x=[double]$p.x; y=[double]$p.y; id=1}) }
+                $null = Invoke-PageCommand 'Input.dispatchTouchEvent' @{type=$p.type; touchPoints=$points}
+            } else { throw 'Unsupported test pointer request.' }
+            $null = Invoke-PageCommand 'Runtime.evaluate' @{expression='window.testPointer = null'}
         }
         if ($state.status -in @('passed', 'failed')) { break }
         if ([DateTime]::UtcNow -gt $deadline) { throw "Browser tests timed out. Last page: $($state.html)" }
