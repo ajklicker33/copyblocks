@@ -1,5 +1,7 @@
 # CopyBlocks
 
+I need to revamp it. Why are the edit boxes not in the blocks??
+
 A simple, local-first clipboard for reusable text. No build, account, or internet connection required.
 
 ## Use
