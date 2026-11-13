@@ -81,7 +81,7 @@ frame.onload = async () => {
         let copied;
         Object.defineProperty(w.navigator, 'clipboard', { configurable: true, value: { writeText: async value => { copied = value; } } });
         check(w.isSecureContext, 'secure context exercises Clipboard API path');
-        action('Copy'); await until(() => status() === 'Copied!', 'copy success');
+        action('Copy'); await until(() => d.querySelector('#copy-status').textContent === 'Copied!' && status() === '', 'copy success');
         check(copied === exactText, 'simulated clipboard receives exact text');
         w.navigator.clipboard.writeText = async () => { throw new w.DOMException('Denied', 'NotAllowedError'); };
         action('Copy'); await until(() => status().startsWith('Copy failed.'), 'clipboard rejection');
@@ -91,7 +91,7 @@ frame.onload = async () => {
         action('Copy');
         check(status().startsWith('Copy failed.') && d.querySelectorAll('textarea').length === 1, 'simulated fallback failure reports error and removes temporary field');
         w.document.execCommand = () => true;
-        action('Copy'); check(status() === 'Copied!', 'simulated fallback success');
+        action('Copy'); check(d.querySelector('#copy-status').textContent === 'Copied!' && status() === '', 'simulated fallback success');
 
         action('Edit'); d.querySelector('#new-text').value = 'Changed #new'; click('#add-button');
         check(d.querySelector('.text-content').textContent === 'Changed #new', 'editing updates existing block');
@@ -127,7 +127,7 @@ frame.onload = async () => {
         w.Storage.prototype.setItem = () => { throw new w.DOMException('Full', 'QuotaExceededError'); };
         add('Unsaved', 'Keep this in memory');
         check(status().startsWith('Could not save'), 'simulated storage write failure is visible');
-        check(w.localStorage.getItem('textBlocks') === beforeFailure && d.querySelectorAll('.text-block').length === 2, 'write failure preserves saved data and current session');
+        check(w.localStorage.getItem('textBlocks') === beforeFailure && d.querySelectorAll('.text-block').length === 1 && d.querySelector('#new-text').value === 'Keep this in memory', 'write failure preserves saved data and unsaved editor draft');
         w.Storage.prototype.setItem = originalSet;
         w.localStorage.setItem('textBlocks', '{broken json');
         await reload(); check(status().includes('left untouched'), 'corrupt stored JSON reports recovery message');
@@ -220,43 +220,43 @@ frame.onload = async () => {
             const before = qrGenerations;
             await importJSON(JSON.stringify([{ title: label, text: payload }]));
             check(!d.querySelector('.qr-view') && qrGenerations === before, `QR stays lazy on import: ${label}`);
-            action('Show QR');
+            action('Show QR/Barcode');
             const decoded = decodeQR();
             check(decoded?.data === payload, `independent QR pixel decode preserves ${label}`);
             check(decoded.chunks.some(chunk => chunk.type === 'eci' && chunk.assignmentNumber === 26), `QR declares UTF-8: ${label}`);
-            action('Hide QR');
-            check(!d.querySelector('.qr-view'), `Hide QR releases canvas: ${label}`);
+            action('Hide QR/Barcode');
+            check(!d.querySelector('.qr-view'), `Hide QR/Barcode releases canvas: ${label}`);
         }
         let qrCopyCount = 0;
         Object.defineProperty(w.navigator, 'clipboard', { configurable: true, value: { writeText: async value => { copied = value; qrCopyCount++; } } });
-        action('Show QR'); action('Hide QR'); action('Show QR');
+        action('Show QR/Barcode'); action('Hide QR/Barcode'); action('Show QR/Barcode');
         check(qrCopyCount === 0, 'QR controls do not copy block text');
         click('.text-content'); await until(() => qrCopyCount === 1, 'copy while QR visible');
         check(copied === samples.at(-1)[1], 'ordinary block click still copies exact body while QR visible');
         const beforeEdit = qrGenerations;
         action('Edit'); d.querySelector('#new-text').value = 'Edited 🍒\nKeep CASE'; click('#add-button');
-        check(qrGenerations === beforeEdit + 1 && decodeQR()?.data === 'Edited 🍒\nKeep CASE', 'visible QR regenerates after edit');
+        check(qrGenerations === beforeEdit + 1 && decodeQR()?.data === 'Edited 🍒\nKeep CASE', `visible QR regenerates after edit (${qrGenerations}/${beforeEdit}; ${decodeQR()?.data})`);
         const beforeLayout = qrGenerations;
         filterBy('');
         check(qrGenerations === beforeLayout && !!d.querySelector('.qr-code'), 'unrelated render reuses current QR image');
         check(d.querySelector('.qr-code').getAttribute('role') === 'img' && d.querySelector('.qr-code').getAttribute('aria-label').includes('exact block text'), 'QR canvas has accessible description');
         await importJSON(JSON.stringify([{ text: 'New import' }]));
         check(!d.querySelector('.qr-view'), 'replacement import removes stale visible QR');
-        action('Show QR'); check(decodeQR()?.data === 'New import', 'new import generates its own QR');
+        action('Show QR/Barcode'); check(decodeQR()?.data === 'New import', 'new import generates its own QR');
         action('Delete'); check(!d.querySelector('.qr-code'), 'deleting block removes QR view');
         await importJSON(JSON.stringify([{ text: 'a'.repeat(2330) }]));
-        action('Show QR');
+        action('Show QR/Barcode');
         check(decodeQR()?.data === 'a'.repeat(2330), 'maximum 2330-byte payload round trips at medium correction');
         check(d.documentElement.scrollWidth <= w.innerWidth && d.querySelector('.qr-code').getBoundingClientRect().width <= d.querySelector('.text-block').clientWidth, 'QR fits 320px viewport');
         for (const payload of ['a'.repeat(2331), '🍒'.repeat(583)]) {
-            await importJSON(JSON.stringify([{ text: payload }])); action('Show QR');
+            await importJSON(JSON.stringify([{ text: payload }])); action('Show QR/Barcode');
             check(!d.querySelector('.qr-code') && d.querySelector('.qr-error').textContent.includes('2,330 UTF-8 bytes'), 'oversized QR shows useful byte-limit message');
             action('Copy'); await until(() => copied === payload, 'oversized block still copies');
             check(copied === payload, 'QR size error leaves exact copying usable');
             action('Edit'); d.querySelector('#new-text').value = 'Shortened'; click('#add-button');
             check(decodeQR()?.data === 'Shortened', 'shortening oversized block recovers visible QR');
         }
-        await importJSON(JSON.stringify([{ text: '\ud800' }])); action('Show QR');
+        await importJSON(JSON.stringify([{ text: '\ud800' }])); action('Show QR/Barcode');
         check(!d.querySelector('.qr-code') && d.querySelector('.qr-error').textContent.includes('invalid Unicode'), 'invalid surrogate is rejected instead of silently changing QR data');
         click('#clear-button');
         add('Tagged', 'Hello', ' ##Work, # #work, work, , urgent, #, URGENT, 日本語 ');
@@ -264,7 +264,7 @@ frame.onload = async () => {
         check([...d.querySelectorAll('.tag-chip')].map(el => el.textContent).join('|') === 'Work|urgent|日本語', 'tag chips display separate metadata safely');
         action('Copy'); await until(() => copied === 'Hello', 'copy tagged block');
         check(copied === 'Hello', 'tag metadata never enters copied body');
-        action('Show QR'); check(decodeQR()?.data === 'Hello', 'tag metadata never enters QR payload');
+        action('Show QR/Barcode'); check(decodeQR()?.data === 'Hello', 'tag metadata never enters QR payload');
         const taggedSnapshot = JSON.stringify(stored());
         await reload();
         check(JSON.stringify(stored()) === taggedSnapshot && d.querySelectorAll('.tag-chip').length === 3, 'tags survive real reload');
@@ -372,7 +372,7 @@ frame.onload = async () => {
         Object.defineProperty(w.navigator, 'clipboard', { configurable: true, value: { writeText: async value => { copied = value; } } });
         action('Copy'); await until(() => copied === 'Color never enters copied text', 'copy colored note');
         check(copied === 'Color never enters copied text', 'color label stays out of copied text');
-        action('Show QR'); check(decodeQR()?.data === 'Color never enters copied text', 'color label stays out of QR data');
+        action('Show QR/Barcode'); check(decodeQR()?.data === 'Color never enters copied text', 'color label stays out of QR data');
         setColorField('#note-color-hex', '#ABCDEF');
         action('Edit');
         check(d.querySelector('#note-color-hex').value === '#000000', 'editing loads stored note color');
@@ -411,10 +411,12 @@ frame.onload = async () => {
             }), 'chips labels and controls have readable opaque surfaces');
         }
         check(d.documentElement.scrollWidth <= w.innerWidth, 'color controls fit the 320px viewport');
-        check(['note-color', 'background-color'].every(prefix => ['picker', 'hex'].every(suffix => {
+        d.querySelector('.appearance-settings').open = true;
+        check(['note-color', 'background-color', 'surface-color'].every(prefix => ['picker', 'hex'].every(suffix => {
             const field = d.querySelector(`#${prefix}-${suffix}`); field.focus();
             return d.activeElement === field && field.labels.length === 1;
         })), 'color inputs are focusable with explicit labels');
+        d.querySelector('.appearance-settings').open = false;
         const editFixtures = [
             { title: 'First', text: 'First body', tags: ['first'], color: '#FFFFFF' },
             { title: 'Second', text: 'https://example.org/second', tags: ['second'], color: '#000000' },
@@ -427,12 +429,12 @@ frame.onload = async () => {
         };
         const displayOrder = () => [...d.querySelectorAll('.block-title')].map(el => el.textContent).join(',');
         const savedOrder = () => stored().map(block => block.title).join(',');
-        cardAction('Second', 'Show QR');
+        cardAction('Second', 'Show QR/Barcode');
         const originalEditStorage = w.localStorage.getItem('textBlocks');
         w.scrollTo(0, 120);
         const scrollBeforeEdit = w.scrollY;
         cardAction('Second', 'Edit');
-        check(displayOrder() === 'Second,First,Third' && savedOrder() === 'First,Second,Third', 'editing promotes display without changing saved order');
+        check(displayOrder() === 'First,Second,Third' && savedOrder() === 'First,Second,Third', 'editing preserves displayed and saved order');
         check(d.querySelectorAll('.is-editing').length === 1 && d.querySelector('.is-editing').getAttribute('aria-label').includes('Editing'), 'one edited card has visible and accessible state');
         check(d.activeElement === d.querySelector('#new-text'), 'starting edit focuses text entry');
         check(w.scrollY === scrollBeforeEdit, 'edit focus does not scroll the page');
@@ -454,7 +456,7 @@ frame.onload = async () => {
         const editExport = JSON.parse(await exportedWhileEditing.text());
         check(editExport.map(block => block.title).join(',') === 'First,Second,Third' && editExport.every(block => !('editing' in block)), 'export uses saved order without edit presentation state');
         filterBy('#first');
-        check(displayOrder() === 'Second,First' && d.querySelector('.filter-exception').textContent.includes('outside the current filter'), 'edited card stays first as explicit filter exception');
+        check(displayOrder() === 'First,Second' && d.querySelector('.filter-exception').textContent.includes('outside the current filter'), 'edited card retains relative order as filter exception');
         check(d.querySelector('#block-count').textContent === '1 of 3 blocks match the filter (+1 editing block)', 'filter count separates matches from editing exception');
         check(d.querySelector('.is-editing .link-list a').href === 'https://example.org/second', 'editing exception retains detected links');
         click('#cancel-edit');
@@ -505,36 +507,29 @@ frame.onload = async () => {
         ];
         frame.style.width = '1200px';
         await importJSON(JSON.stringify(manyTags));
-        await until(() => d.querySelectorAll('#popular-tags button').length === 5, 'wide-screen suggestions');
+        await until(() => d.querySelectorAll('#popular-tags button').length > 3, 'wide-screen suggestions');
         const suggestionKeys = () => [...d.querySelectorAll('#popular-tags [data-tag-filter]')].map(el => el.dataset.tagFilter);
         const tagCount = key => [...d.querySelectorAll('[data-tag-filter]')].find(el => el.dataset.tagFilter === 'tag:' + key)?.querySelector('.tag-count').textContent;
-        check(suggestionKeys().join() === 'tag:alpha,tag:beta,tag:gamma,tag:delta,tag:epsilon', 'wide strip ranks five frequent tags with deterministic ties');
+        check(suggestionKeys().slice(0, 3).join() === 'tag:alpha,tag:beta,tag:gamma', 'wide strip ranks frequent tags with deterministic ties');
         check(tagCount('alpha') === '4' && tagCount('beta') === '3', 'counts deduplicate casing variants once per note');
         check(!d.querySelector('#more-tags').open && !d.querySelector('#more-tags').hidden, 'overflow tags are collapsed by default');
         filterBy('#gamma');
         check(tagCount('alpha') === '4' && tagCount('beta') === '3' && d.querySelectorAll('.text-block').length === 2, 'filtering does not shrink global tag counts');
         filterBy('#zeta');
-        check(d.querySelector('#active-tag [data-tag-filter]').dataset.tagFilter === 'tag:zeta', 'selected overflow tag stays visible outside suggestions');
+        check(!!d.querySelector('#tag-filter [data-tag-filter="tag:zeta"][aria-pressed=true]'), 'selected overflow tag stays visible outside suggestions');
         d.querySelector('#more-tags').open = false;
-        check(d.querySelector('#active-tag button').getAttribute('aria-pressed') === 'true', 'collapsing overflow keeps active filter visible');
-        d.querySelector('#active-tag button').click();
+        check(!!d.querySelector('#tag-filter [data-tag-filter="tag:zeta"][aria-pressed=true]'), 'collapsing overflow keeps active filter visible');
+        d.querySelector('#tag-filter [data-tag-filter="tag:zeta"][aria-pressed=true]').click();
         check(d.querySelector('#tag-filter').dataset.activeTag === '' && d.querySelectorAll('.text-block').length === 4, 'active overflow chip toggles filter off');
         d.querySelector('#more-tags').open = true;
-        const searchTags = value => {
-            const field = d.querySelector('#tag-search'); field.focus(); field.value = value; field.dispatchEvent(new w.Event('input'));
-        };
-        searchTags('日本');
-        check(d.querySelectorAll('#more-tag-list button').length === 1 && d.querySelector('#more-tag-list button').dataset.tagFilter === 'tag:日本語' && d.activeElement === d.querySelector('#tag-search'), 'expanded search supports Unicode and preserves typing focus');
-        searchTags('missing'); check(!d.querySelector('#tag-search-empty').hidden, 'tag search reports no matches');
-        searchTags('ALPHA'); check(d.querySelector('#more-tag-list button').dataset.tagFilter === 'tag:alpha', 'search finds popular tags case-insensitively');
-        searchTags('');
+        check(!d.querySelector('#tag-search') && d.querySelectorAll('#more-tag-list button').length === 7, 'all-tags expansion includes every tag without search');
         filterBy('#zeta');
         add('Five', 'extra', 'Zeta');
         check(tagCount('zeta') === '2' && suggestionKeys().includes('tag:zeta') && d.querySelector('#tag-filter').dataset.activeTag === 'tag:zeta', 'saving tags updates rank and count without clearing selection');
         const countBeforeDraft = tagCount('zeta'); d.querySelector('#block-tags').value = 'zeta, draft-only';
         check(tagCount('zeta') === countBeforeDraft && !tagCount('draft-only'), 'unsaved drafts do not affect tag statistics');
         frame.style.width = '320px';
-        await until(() => d.querySelectorAll('#popular-tags button').length === 3, 'compact suggestions');
+        await new Promise(resolve => setTimeout(resolve, 60));
         check(d.querySelector('#active-tag button')?.dataset.tagFilter === 'tag:zeta', 'active tag remains visible when responsive limit shrinks');
         check(d.documentElement.scrollWidth <= w.innerWidth, 'collapsible tag strip fits 320px');
         filterBy('');
@@ -606,11 +601,11 @@ frame.onload = async () => {
             check(card.lastElementChild.classList.contains('block-footer') && !!card.querySelector('.drag-handle') && !card.querySelector('.block-move-actions'), 'footer provides one drag handle instead of movement buttons');
         }
         check(Math.abs(rect(layoutCards[0].querySelector('.block-footer')).bottom - rect(layoutCards[1].querySelector('.block-footer')).bottom) < 2, 'unequal-height content keeps neighboring footers aligned');
-        cardAction('Short', 'Show QR');
+        cardAction('Short', 'Show QR/Barcode');
         const firstCard = d.querySelector('.text-block');
         check(Math.abs(rect(firstCard.querySelector('.qr-view')).top + rect(firstCard.querySelector('.qr-view')).height / 2 - rect(firstCard).top - rect(firstCard).height / 2) < 2, 'QR overlay is vertically centered on its block');
         check(Math.abs(rect(firstCard.querySelector('.block-footer')).bottom - rect(layoutCards[1].querySelector('.block-footer')).bottom) < 2, 'opening QR keeps row footers aligned');
-        cardAction('Too large for QR', 'Show QR');
+        cardAction('Too large for QR', 'Show QR/Barcode');
         check(layoutCards[2].querySelector('.qr-error') && w.getComputedStyle(layoutCards[2].querySelector('.qr-view')).position === 'absolute', 'QR errors remain in the overlay without changing layout');
         firstCard.querySelector('.block-top-actions button').focus();
         await pressChipKey('Tab'); check(d.activeElement.textContent === 'Edit', 'native Tab follows visual top action order to Edit');
@@ -736,29 +731,35 @@ frame.onload = async () => {
         w.scrollTo(0, d.body.scrollHeight);
         const finalBounds = rect(d.querySelector('.drop-placeholder'));
         await pointer('mouseMoved', finalBounds.left + 30, Math.min(w.innerHeight - 80, finalBounds.top + finalBounds.height / 2));
+        const releaseScroll = w.scrollY;
         await pointer('mouseReleased', finalBounds.left + 30, Math.min(w.innerHeight - 80, finalBounds.top + finalBounds.height / 2));
         check(finalTarget === 5 && stored()[5].title === 'Drag 0', 'native drag reaches last slot after edge scrolling');
+        check(releaseScroll > 0 && w.scrollY === releaseScroll, 'native reorder release preserves the scrolled viewport');
         const savedDragOrder = w.localStorage.getItem('textBlocks');
         handleFor('Drag 0').focus(); await pressChipKey('Space'); await pressChipKey('ArrowUp');
         const setBeforeDrop = w.Storage.prototype.setItem;
+        const failedDropScroll = w.scrollY;
         w.Storage.prototype.setItem = () => { throw new w.DOMException('Full', 'QuotaExceededError'); };
         try { keyHandle('Enter', handleFor('Drag 0')); } finally { w.Storage.prototype.setItem = setBeforeDrop; }
         check(w.localStorage.getItem('textBlocks') === savedDragOrder && [...d.querySelectorAll('.block-title')].at(-1).textContent === 'Drag 0' && !d.querySelector('.drop-placeholder'), 'failed reorder save restores displayed and stored order');
+        check(w.scrollY === failedDropScroll, 'failed reorder preserves release scroll');
         await beginPointer('Drag 0');
         const unchangedHandle = rect(handleFor('Drag 0'));
+        const unchangedScroll = w.scrollY;
         await pointer('mouseReleased', unchangedHandle.left + unchangedHandle.width / 2, unchangedHandle.top + unchangedHandle.height / 2);
         check(w.localStorage.getItem('textBlocks') === savedDragOrder && !d.querySelector('.dragging'), 'same-position drop preserves order and clears preview');
+        check(w.scrollY === unchangedScroll, 'same-position release preserves scroll');
         await reload();
         check(w.localStorage.getItem('textBlocks') === savedDragOrder && !d.querySelector('.drop-placeholder'), 'only committed drag order survives reload');
         frame.style.position = ''; frame.style.inset = '';
         await importJSON(JSON.stringify([{ title: 'Icons', text: 'Exact QR body', tags: ['icons'], color: '#000000' }, { title: 'Other', text: 'Untouched', color: '#FF0000' }]));
-        action('Show QR'); filterBy('#icons'); action('Edit');
+        action('Show QR/Barcode'); filterBy('#icons'); action('Edit');
         d.querySelector('#new-text').value = 'Unsaved icon draft';
         const beforeIcons = w.localStorage.getItem('textBlocks');
         const saveControl = d.querySelector('[data-label=Save]'); saveControl.focus();
         click('#action-style-button');
         check(d.activeElement === saveControl && d.querySelector('[data-label=Save]') === saveControl, 'presentation toggle preserves existing action and focus');
-        check(!d.querySelector('.editing-badge') && [...d.querySelectorAll('.block-top-actions button')].map(b => b.dataset.label).join(',') === 'Copy,Save,Cancel', 'edited top row substitutes Save Cancel without Editing badge');
+        check(!d.querySelector('.editing-badge') && [...d.querySelectorAll('.block-top-actions button')].map(b => b.dataset.label).join(',') === 'Duplicate,Save,Cancel', 'edited top row substitutes Save Cancel without Editing badge');
         check(d.querySelector('#new-text').value === 'Unsaved icon draft' && d.querySelector('#tag-filter').dataset.activeTag === 'tag:icons' && decodeQR()?.data === 'Exact QR body', 'icons preserve draft filter and visible QR');
         check(w.localStorage.getItem('textBlocks') === beforeIcons && w.localStorage.getItem('actionIconMode') === 'true', 'icon preference is stored independently of note data');
         check([...d.querySelectorAll('.block-actions button')].every(b => b.querySelector('svg[aria-hidden=true]') && b.getAttribute('aria-label') && b.title), 'all icon actions have names tooltips and decorative SVGs');
@@ -768,8 +769,8 @@ frame.onload = async () => {
         check(!!d.querySelector('.is-editing') && stored()[0].text === 'Exact QR body', 'icon Save preserves empty-body validation');
         action('Cancel');
         check(!d.querySelector('.is-editing') && !d.querySelector('#new-text').value && stored()[0].text === 'Exact QR body', 'icon Cancel discards draft without deleting note');
-        action('Hide QR'); check(!d.querySelector('.qr-view') && d.querySelector('[data-label="Show QR"]').getAttribute('aria-expanded') === 'false', 'icon QR hide updates accessible state');
-        action('Show QR'); check(decodeQR()?.data === 'Exact QR body' && d.querySelector('[data-label="Hide QR"]').getAttribute('aria-expanded') === 'true', 'icon QR show preserves exact payload and state');
+        action('Hide QR/Barcode'); check(!d.querySelector('.qr-view') && d.querySelector('[data-label="Show QR/Barcode"]').getAttribute('aria-expanded') === 'false', 'icon QR hide updates accessible state');
+        action('Show QR/Barcode'); check(decodeQR()?.data === 'Exact QR body' && d.querySelector('[data-label="Hide QR/Barcode"]').getAttribute('aria-expanded') === 'true', 'icon QR show preserves exact payload and state');
         action('Edit'); d.querySelector('#new-text').value = 'Saved by icon';
         d.querySelector('[data-label=Save]').focus(); await pressChipKey('Enter');
         check(stored()[0].text === 'Saved by icon' && !d.querySelector('.is-editing'), 'native Enter activates icon Save');
@@ -837,7 +838,7 @@ frame.onload = async () => {
         const initialCopyBounds = rect(copyCards[0]);
         copyCards[0].click(); await until(() => !!copyCards[0].querySelector('.copy-overlay'), 'card copy overlay');
         const feedback = copyCards[0].querySelector('.copy-overlay');
-        check(feedback.textContent === 'Copied!' && copiedValues[0] === 'Exact body A' && status() === 'Copied!', 'successful card copy shows local feedback and accessible status for exact body');
+        check(feedback.textContent === 'Copied!' && copiedValues[0] === 'Exact body A' && d.querySelector('#copy-status').textContent === 'Copied!' && status() === '', 'successful card copy shows local feedback and accessible status for exact body');
         check(rect(copyCards[0]).height === initialCopyBounds.height && Math.abs(rect(feedback).left + rect(feedback).width / 2 - initialCopyBounds.left - initialCopyBounds.width / 2) < 1, 'copy overlay is centered without layout shift');
         check(w.getComputedStyle(feedback).pointerEvents === 'none' && feedback.getAttribute('aria-hidden') === 'true', 'copy overlay does not intercept input or duplicate announcements');
         await new Promise(resolve => setTimeout(resolve, 850));
@@ -851,7 +852,7 @@ frame.onload = async () => {
         copyCards[0].click(); await until(() => status().startsWith('Copy failed'), 'copy failure');
         check(!d.querySelector('.copy-overlay'), 'clipboard rejection clears prior success and shows no success overlay');
         w.navigator.clipboard.writeText = async () => {};
-        filterBy('#copy'); action('Edit'); action('Show QR'); action('Copy');
+        filterBy('#copy'); action('Edit'); action('Show QR/Barcode'); d.querySelector('.is-editing').click();
         await until(() => !!d.querySelector('.copy-overlay'), 'editing copy feedback');
         check(!!d.querySelector('.is-editing .copy-overlay') && decodeQR()?.data === 'Exact body A', 'feedback works while filtered editing and showing QR');
         action('Cancel'); check(!d.querySelector('.copy-overlay'), 'rerender clears feedback');
@@ -862,7 +863,7 @@ frame.onload = async () => {
         const multiBody = 'https://example.org/one https://example.org/two https://example.org/one https://example.org/three';
         await importJSON(JSON.stringify([{ title: 'Links', text: multiBody }]));
         const qrCard = d.querySelector('.text-block'); const closedHeight = rect(qrCard).height;
-        action('Show QR');
+        action('Show QR/Barcode');
         let qrSelect = d.querySelector('.qr-view select');
         check([...qrSelect.options].map(o => o.text).join('|') === 'Full text QR|Link 1|Link 2|Link 3' && d.querySelector('.block-links ol').children.length === 3, 'multiple distinct links share numbered list and code identifiers');
         check(decodeQR()?.data === 'https://example.org/one' && qrSelect.value === '1', 'QR defaults to first detected link');
@@ -874,11 +875,11 @@ frame.onload = async () => {
         }
         check(!d.querySelector('.qr-view').textContent.includes('Scan to read'), 'redundant scan caption is removed');
         qrSelect.focus(); await pressChipKey('Escape');
-        check(!d.querySelector('.qr-view') && d.activeElement.dataset.label === 'Show QR', 'Escape closes QR and restores opener focus');
-        action('Show QR'); click('.qr-close');
-        check(!d.querySelector('.qr-view') && d.activeElement.dataset.label === 'Show QR', 'Close dismisses QR and restores opener focus');
+        check(!d.querySelector('.qr-view') && d.activeElement.dataset.label === 'Show QR/Barcode', 'Escape closes QR and restores opener focus');
+        action('Show QR/Barcode'); click('.qr-close');
+        check(!d.querySelector('.qr-view') && d.activeElement.dataset.label === 'Show QR/Barcode', 'Close dismisses QR and restores opener focus');
         await importJSON(JSON.stringify([{ title: 'Single', text: 'https://example.org/solo https://example.org/solo' }]));
-        action('Show QR'); qrSelect = d.querySelector('.qr-view select');
+        action('Show QR/Barcode'); qrSelect = d.querySelector('.qr-view select');
         check([...qrSelect.options].map(o => o.text).join('|') === 'Full text QR|Link' && !!d.querySelector('.block-links ul'), 'one distinct link is unnumbered even when repeated');
         qrSelect.value = '1'; qrSelect.dispatchEvent(new w.Event('change'));
         check(decodeQR()?.data === 'https://example.org/solo', 'single link code decodes exact normalized destination');
@@ -889,66 +890,19 @@ frame.onload = async () => {
         await pointer('mousePressed', panel.left + 4, panel.top + 4); await pointer('mouseReleased', panel.left + 4, panel.top + 4);
         check(!!d.querySelector('.qr-view'), 'inside QR panel clicks do not dismiss');
         await pointer('mousePressed', 2, 2); await pointer('mouseReleased', 2, 2);
-        check(!d.querySelector('.qr-view') && qrCopies === 0 && d.activeElement.dataset.label === 'Show QR', 'outside QR click closes without copying and restores focus');
-        action('Show QR');
+        check(!d.querySelector('.qr-view') && qrCopies === 0 && d.activeElement.dataset.label === 'Show QR/Barcode', 'outside QR click closes without copying and restores focus');
+        action('Show QR/Barcode');
         await pointer('touchStart', 2, 2); await pointer('touchEnd');
         check(!d.querySelector('.qr-view') && qrCopies === 0 && !d.querySelector('.dragging'), 'outside QR tap dismisses without copying or dragging');
-        action('Show QR');
+        action('Show QR/Barcode');
         check(rect(d.querySelector('.qr-view')).width <= d.querySelector('.text-block').clientWidth + 2 && d.documentElement.scrollWidth <= w.innerWidth, 'QR panel fits narrow viewport');
         action('Edit'); d.querySelector('#new-text').value = 'https://example.org/new'; action('Save');
         qrSelect = d.querySelector('.qr-view select'); qrSelect.value = '1'; qrSelect.dispatchEvent(new w.Event('change'));
         check(decodeQR()?.data === 'https://example.org/new', 'editing replaces stale link QR payloads');
         frame.style.position = ''; frame.style.inset = '';
-        await importJSON(JSON.stringify([
-            { title: 'Alpha', text: 'Café 日本語 body', tags: ['work'] },
-            { title: 'Beta', text: 'alpha in body', tags: ['home'] },
-            { title: 'Gamma', text: 'Other', tags: ['ALPHA', 'work'] }
-        ]));
-        const beforeSearch = w.localStorage.getItem('textBlocks');
-        d.querySelector('#new-text').focus(); await pressChipKey('Ctrl+F');
-        const searchBox = d.querySelector('#note-search');
-        check(!d.querySelector('#note-search-panel').hidden && d.activeElement === searchBox, 'native Ctrl F opens and focuses app search');
-        const searchFor = value => { searchBox.value = value; searchBox.dispatchEvent(new w.Event('input')); };
-        searchFor('ALPHA');
-        check(d.querySelectorAll('.text-block').length === 3 && d.activeElement === searchBox, 'search matches title body and separate tags case-insensitively while retaining typing focus');
-        check([...d.querySelectorAll('.drag-handle')].every(b => b.disabled), 'search disables reorder handles');
-        filterBy('#work');
-        check(d.querySelectorAll('.text-block').length === 2 && d.querySelector('#block-count').textContent.startsWith('2 of 3'), 'search and tag filters combine using AND with correct count');
-        searchFor('日本語'); check(d.querySelectorAll('.text-block').length === 1, 'search supports Unicode body text');
-        action('Edit'); searchFor('no matches');
-        check(d.querySelectorAll('.text-block').length === 1 && !!d.querySelector('.is-editing .filter-exception') && d.querySelector('#block-count').textContent.startsWith('0 of 3'), 'nonmatching active edit stays visible as counted exception');
-        d.querySelector('#new-text').value = 'Keep search draft';
-        let searchExport;
-        const searchCreateURL = w.URL.createObjectURL, searchAnchorClick = w.HTMLAnchorElement.prototype.click;
-        try {
-            w.URL.createObjectURL = blob => { searchExport = blob; return searchCreateURL.call(w.URL, blob); };
-            w.HTMLAnchorElement.prototype.click = () => {};
-            click('#export-button');
-        } finally { w.URL.createObjectURL = searchCreateURL; w.HTMLAnchorElement.prototype.click = searchAnchorClick; }
-        check((await searchExport.text()) === JSON.stringify(stored(), null, 2) && stored().length === 3, 'export includes full saved collection while searching and editing');
-        searchBox.focus(); await pressChipKey('Escape');
-        check(d.querySelector('#note-search-panel').hidden && !searchBox.value && d.activeElement.id === 'new-text' && d.querySelector('#new-text').value === 'Keep search draft', 'Escape clears closes and restores focus without discarding edit');
-        check(d.querySelector('#tag-filter').dataset.activeTag === 'tag:work' && w.localStorage.getItem('textBlocks') === beforeSearch, 'closing search preserves selected tag and saved notes');
-        action('Cancel'); filterBy(''); click('#search-button'); searchFor('missing');
-        check(!d.querySelector('.text-block') && !d.querySelector('#empty-state').hidden && d.querySelector('#empty-state').textContent.includes('No notes match'), 'empty search results explain how to recover');
-        searchFor(''); check(d.querySelectorAll('.text-block').length === 3 && [...d.querySelectorAll('.drag-handle')].every(b => !b.disabled), 'clearing query restores all notes and reordering');
-        const browserFind = new w.KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true });
-        searchBox.focus(); searchBox.dispatchEvent(browserFind);
-        check(!browserFind.defaultPrevented && d.querySelector('#note-search-help').textContent.includes('browser Find'), 'second Ctrl F in search passes through to discoverable browser Find');
-        click('#close-search');
-        const macFind = new w.KeyboardEvent('keydown', { key: 'f', metaKey: true, bubbles: true, cancelable: true });
-        d.dispatchEvent(macFind);
-        check(macFind.defaultPrevented && d.activeElement === searchBox, 'Cmd F also opens app search');
-        click('#backups-button');
-        const modalFind = new w.KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true });
-        d.querySelector('#export-button').dispatchEvent(modalFind);
-        check(!modalFind.defaultPrevented && d.querySelector('#backups-dialog').open, 'search shortcut is not intercepted in a modal');
-        await new Promise(resolve => { d.querySelector('#backups-dialog').addEventListener('close', resolve, { once: true }); click('#close-backups'); });
-        frame.style.width = '320px'; await new Promise(resolve => setTimeout(resolve, 40));
-        check(d.documentElement.scrollWidth <= w.innerWidth, 'expanded search fits 320px');
-        click('#close-search');
+        check(!d.querySelector('#note-search') && !d.querySelector('#search-button'), 'note search interface is removed');
         await importJSON(JSON.stringify([{ title: 'Pinned QR', text: 'Body https://example.org/pinned trailing text', tags: ['pin'] }]));
-        action('Show QR');
+        action('Show QR/Barcode');
         const qrPayloads = []; w.navigator.clipboard.writeText = async value => { qrPayloads.push(value); };
         click('.qr-code'); await until(() => qrPayloads.length === 1, 'QR click copy');
         check(qrPayloads[0] === 'https://example.org/pinned' && !!d.querySelector('.qr-view'), 'clicking link QR copies its destination without closing');
@@ -965,8 +919,8 @@ frame.onload = async () => {
         filterBy('#pin');
         check(d.querySelector('.qr-pin').getAttribute('aria-pressed') === 'true' && d.querySelector('.qr-view select').value === '0', 'pin and selected payload survive unrelated render');
         click('.qr-close');
-        check(!d.querySelector('.qr-view') && d.activeElement.dataset.label === 'Show QR', 'red X closes pinned QR and restores focus');
-        action('Show QR');
+        check(!d.querySelector('.qr-view') && d.activeElement.dataset.label === 'Show QR/Barcode', 'red X closes pinned QR and restores focus');
+        action('Show QR/Barcode');
         check(d.querySelector('.qr-pin').getAttribute('aria-pressed') === 'false' && d.querySelector('.qr-view select').value === '1', 'explicit close resets pin and reopening defaults to link');
         click('.qr-pin'); click('.qr-pin'); d.querySelector('.qr-view select').focus(); await pressChipKey('Escape');
         check(!d.querySelector('.qr-view'), 'unpin restores normal Escape dismissal');
@@ -987,7 +941,7 @@ frame.onload = async () => {
         check(density.value === '1', 'native Home selects one column');
         await pressChipKey('ArrowRight'); check(density.value === '2' && density.getAttribute('aria-valuetext') === '2 columns', 'native arrow changes density with accessible count');
         await importJSON(JSON.stringify([{ title: 'Density A', text: 'https://example.org/long' }, { title: 'Density B', text: 'x'.repeat(1000) }]));
-        action('Show QR'); click('.qr-pin');
+        action('Show QR/Barcode'); click('.qr-pin');
         const densityQR = d.querySelector('.qr-view'); setDensity(3);
         check(d.querySelector('.qr-view') === densityQR && decodeQR()?.data === 'https://example.org/long' && d.querySelector('.qr-pin').getAttribute('aria-pressed') === 'true', 'live density preserves pinned QR view and payload');
         const densityOrder = w.localStorage.getItem('textBlocks');
@@ -1016,10 +970,8 @@ frame.onload = async () => {
         check(visiblePriorityOrder() === 'Zero|One|Tie|Nine|Ten|Last priority|Unranked P0|Invalid', 'priority view sorts numeric tags with stable ties and unranked notes last');
         check(stored().map(b => b.title).join('|') === customPriorityOrder && [...d.querySelectorAll('.drag-handle')].every(b => b.disabled), 'priority view preserves custom storage and disables ambiguous dragging');
         filterBy('#work'); check(visiblePriorityOrder() === 'One|Tie|Ten|Unranked P0', 'tag filtering remains functional in priority view');
-        click('#search-button'); d.querySelector('#note-search').value = 'match'; d.querySelector('#note-search').dispatchEvent(new w.Event('input'));
-        check(visiblePriorityOrder() === 'One|Tie|Ten', 'search combines with priority and tag filtering');
-        click('#priority-toggle'); check(visiblePriorityOrder() === 'Ten|One|Tie', 'deselect restores custom order within active filters');
-        click('#close-search'); filterBy(''); click('#priority-toggle');
+        click('#priority-toggle'); check(visiblePriorityOrder() === 'Unranked P0|Ten|One|Tie', 'custom order restores within tag filter');
+        filterBy(''); click('#priority-toggle');
         let priorityExport;
         const priorityURL = w.URL.createObjectURL, priorityAnchor = w.HTMLAnchorElement.prototype.click;
         try {
@@ -1056,6 +1008,225 @@ frame.onload = async () => {
         cardAction('Scroll 6', 'Edit'); w.scrollTo(0, 500); click('#cancel-edit');
         await new Promise(resolve => setTimeout(resolve, 40));
         check(w.scrollY === 500 && d.activeElement.dataset.label === 'Edit', 'editor Cancel also preserves page position');
+        const surfaceNotes = w.localStorage.getItem('textBlocks');
+        const pageBeforeSurface = w.getComputedStyle(d.body).backgroundColor;
+        const noteBeforeSurface = w.getComputedStyle(d.querySelector('.text-block')).backgroundColor;
+        d.querySelector('.appearance-settings').open = true;
+        setColorField('#surface-color-hex', '#101010');
+        check([...d.querySelectorAll('.container')].every(el => w.getComputedStyle(el).backgroundColor === 'rgb(16, 16, 16)' && w.getComputedStyle(el).color === 'rgb(255, 255, 255)'), 'dark surfaces use automatic white foreground');
+        check(w.getComputedStyle(d.querySelector('#tags-help')).color === 'rgb(255, 255, 255)', 'surface helper labels inherit readable contrast');
+        check(w.getComputedStyle(d.body).backgroundColor === pageBeforeSurface && w.getComputedStyle(d.querySelector('.text-block')).backgroundColor === noteBeforeSurface && w.localStorage.getItem('textBlocks') === surfaceNotes, 'surface preference leaves background notes and backup data independent');
+        setColorField('#surface-color-hex', 'bad');
+        check(d.querySelector('#surface-color-hex').getAttribute('aria-invalid') === 'true' && w.localStorage.getItem('surfaceColor') === '#101010', 'invalid surface HEX preserves last valid preference');
+        setColorField('#surface-color-hex', '#FFFFCC');
+        check(w.getComputedStyle(d.querySelector('.container')).color === 'rgb(0, 0, 0)' && d.querySelector('#surface-color-picker').value === '#ffffcc', 'light surfaces use black foreground and synchronized picker');
+        await reload();
+        check(d.querySelector('#surface-color-hex').value === '#FFFFCC' && !d.querySelector('.appearance-settings').open, 'surface preference restores with compact settings collapsed');
+        frame.style.width = '320px'; d.querySelector('.appearance-settings').open = true;
+        await new Promise(resolve => setTimeout(resolve, 40));
+        const surfacePanel = d.querySelector('.appearance-panel').getBoundingClientRect();
+        check(surfacePanel.left >= 0 && surfacePanel.right <= w.innerWidth && d.documentElement.scrollWidth <= w.innerWidth, `expanded color preferences fit narrow viewport (${surfacePanel.left}, ${surfacePanel.right}, ${d.documentElement.scrollWidth}, ${w.innerWidth})`);
+        const surfaceSet = w.Storage.prototype.setItem;
+        w.Storage.prototype.setItem = () => { throw new w.DOMException('Full', 'QuotaExceededError'); };
+        try { setColorField('#surface-color-hex', '#222222'); } finally { w.Storage.prototype.setItem = surfaceSet; }
+        check(status().includes('Could not save') && w.getComputedStyle(d.querySelector('.container')).backgroundColor === 'rgb(34, 34, 34)', 'surface storage failure reports error while keeping session usable');
+        d.querySelector('.appearance-settings').open = false;
+        await importJSON(JSON.stringify([{ title: 'Before', text: 'First', tags: [] }, { title: 'Source', text: 'Original', tags: ['work', 'P9'] }, { title: 'After', text: 'Last', tags: [] }]));
+        cardAction('Source', 'Edit');
+        check([...d.querySelectorAll('.block-title')].map(el => el.textContent).join('|') === 'Before|Source|After' && !!d.querySelector('.is-editing'), 'editing retains position and dotted highlight');
+        d.querySelector('#new-text').value = ' '; action('Duplicate');
+        check(stored().length === 3 && !!d.querySelector('.is-editing'), 'Duplicate validates nonempty body');
+        d.querySelector('#new-text').value = 'Independent draft'; setColorField('#note-color-hex', '#12'); action('Duplicate');
+        check(stored().length === 3, 'Duplicate validates draft color');
+        setColorField('#note-color-hex', '#123456'); d.querySelector('#block-title').value = 'Draft clone'; d.querySelector('#block-tags').value = 'work, P1';
+        let duplicateClipboardCalls = 0; w.navigator.clipboard.writeText = async () => { duplicateClipboardCalls++; };
+        const duplicateSet = w.Storage.prototype.setItem;
+        w.Storage.prototype.setItem = () => { throw new w.DOMException('Full', 'QuotaExceededError'); };
+        try { action('Duplicate'); } finally { w.Storage.prototype.setItem = duplicateSet; }
+        check(stored().length === 3 && d.querySelectorAll('.text-block').length === 3 && d.querySelector('#new-text').value === 'Independent draft', 'failed duplicate write preserves collection and draft');
+        action('Duplicate');
+        check(stored().map(b => b.title).join('|') === 'Before|Source|Draft clone|After' && stored()[1].text === 'Original' && stored()[2].text === 'Independent draft' && stored()[2].color === '#123456', 'Duplicate inserts validated draft after source without overwriting original');
+        check(d.querySelector('.is-editing .block-title').textContent === 'Source' && d.querySelector('#new-text').value === 'Independent draft' && d.activeElement.dataset.label === 'Duplicate' && duplicateClipboardCalls === 0, 'Duplicate keeps source edit and focus without copying');
+        d.querySelector('#new-text').value = 'Later edit'; action('Save');
+        check(stored()[1].text === 'Later edit' && stored()[2].text === 'Independent draft', 'duplicate remains independent of later source saves');
+        d.querySelector('[data-index="1"] [data-label=Edit]').click(); filterBy('#work'); click('#priority-toggle');
+        check(d.querySelectorAll('.text-block').length === 2 && !!d.querySelector('.is-editing'), 'stationary edit remains available with filters and priority');
+        if (!d.querySelector('[data-label=Duplicate] svg')) click('#action-style-button');
+        const duplicateIcon = d.querySelector('[data-label=Duplicate] svg path').getAttribute('d');
+        const normalCopyIcon = d.querySelector('[data-label=Copy] svg path').getAttribute('d');
+        check(duplicateIcon !== normalCopyIcon && d.querySelector('[data-label=Duplicate]').getAttribute('aria-label') === 'Duplicate', 'Duplicate has a distinct accessible icon');
+        d.querySelector('[data-label=Duplicate]').focus(); await pressChipKey('Enter');
+        check(stored().length === 5 && stored()[1].title === 'Draft clone' && stored()[2].title === 'Draft clone', 'native Duplicate works under priority and filters using custom insertion order');
+        action('Cancel'); click('#priority-toggle'); filterBy('');
+        d.querySelector('.text-block').click(); await until(() => !!d.querySelector('.copy-overlay'), 'in-block-only success');
+        check(status() === '' && d.querySelector('#copy-status').classList.contains('sr-only') && d.querySelector('#copy-status').textContent === 'Copied!', 'copy success is visible only in block with separate hidden announcement');
+        await importJSON(JSON.stringify([{ title: 'Pin source', text: 'https://example.org/first https://example.org/second', tags: ['pinned'] }, { text: 'Other', tags: ['other'] }]));
+        action('Show QR/Barcode');
+        let pinSelect = d.querySelector('.qr-view select'); pinSelect.value = '2'; pinSelect.dispatchEvent(new w.Event('change')); click('.qr-pin');
+        check(stored()[0].codePin.payload === 'https://example.org/second' && stored()[0].codePin.format === 'qr', 'pin persists selected destination rather than link number');
+        const pinnedBackup = JSON.stringify(stored());
+        await reload();
+        check(d.querySelector('.qr-pin').getAttribute('aria-pressed') === 'true' && decodeQR()?.data === 'https://example.org/second', 'reload restores pinned selected link overlay');
+        filterBy('#other'); check(!d.querySelector('.qr-view'), 'hidden pinned notes do not force themselves into filter');
+        filterBy(''); check(decodeQR()?.data === 'https://example.org/second', 'clearing filter restores pinned overlay');
+        action('Edit'); d.querySelector('#new-text').value = 'Unsaved draft';
+        pinSelect = d.querySelector('.qr-view select'); pinSelect.value = '0'; pinSelect.dispatchEvent(new w.Event('change'));
+        check(stored()[0].codePin.payload === null && stored()[0].text.includes('https://example.org/first') && d.querySelector('#new-text').value === 'Unsaved draft', 'pinned selection persists without saving editor draft');
+        action('Duplicate'); check(!stored()[1].codePin, 'duplicates begin unpinned'); action('Cancel');
+        await importJSON(pinnedBackup);
+        check(decodeQR()?.data === 'https://example.org/second', 'backup import restores selected pinned overlay');
+        action('Edit'); d.querySelector('#new-text').value = 'https://example.org/first'; action('Save');
+        check(stored()[0].codePin.payload === 'https://example.org/first' && decodeQR()?.data === 'https://example.org/first' && status().includes('Pinned link was removed'), 'removed pinned link falls back and announces change');
+        click('.qr-pin'); check(!!d.querySelector('.qr-view') && !stored()[0].codePin, 'unpin leaves current overlay open but clears saved pin');
+        await reload(); check(!d.querySelector('.qr-view'), 'unpinned overlay does not reopen on reload');
+        action('Show QR/Barcode');
+        const pinSet = w.Storage.prototype.setItem;
+        w.Storage.prototype.setItem = () => { throw new w.DOMException('Full', 'QuotaExceededError'); };
+        try { click('.qr-pin'); } finally { w.Storage.prototype.setItem = pinSet; }
+        check(!stored()[0].codePin && d.querySelector('.qr-pin').getAttribute('aria-pressed') === 'false' && status().includes('Could not save'), 'failed pin write does not claim persistence');
+        click('.qr-pin');
+        w.Storage.prototype.setItem = () => { throw new w.DOMException('Full', 'QuotaExceededError'); };
+        try { click('.qr-close'); } finally { w.Storage.prototype.setItem = pinSet; }
+        check(!!d.querySelector('.qr-view') && !!stored()[0].codePin, 'failed close write preserves pinned state for retry');
+        click('.qr-close'); await reload(); check(!d.querySelector('.qr-view') && !stored()[0].codePin, 'explicit close clears saved pin across reload');
+        const beforeInvalidPin = w.localStorage.getItem('textBlocks');
+        for (const codePin of [null, true, { format: 'invalid', payload: null }, { format: 'qr', payload: 7 }, { format: 'qr', payload: 'javascript:alert(1)' }]) {
+            await importJSON(JSON.stringify([{ text: 'Bad pin', codePin }]));
+            check(w.localStorage.getItem('textBlocks') === beforeInvalidPin, 'malformed pin settings cannot replace collection');
+        }
+        const chooseFormat = value => { const field = d.querySelector('.code-format'); field.value = value; field.dispatchEvent(new w.Event('change')); };
+        const decodeBarcode = () => {
+            const canvas = d.querySelector('.barcode-code');
+            if (!canvas) return null;
+            const pixels = canvas.getContext('2d').getImageData(0, Math.floor(canvas.height / 2), canvas.width, 1).data;
+            const row = new ZXing.BitArray(canvas.width);
+            for (let x = 0; x < canvas.width; x++) if (pixels[x * 4] < 128) row.set(x);
+            return new ZXing.Code128Reader().decodeRow(0, row, null).getText();
+        };
+        frame.style.width = '1200px'; await new Promise(resolve => setTimeout(resolve, 60)); setDensity(1);
+        for (const payload of ['01234567890123456789', 'AbC-123', ' !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~ ', 'https://example.org/A?x=1']) {
+            await importJSON(JSON.stringify([{ title: 'Barcode', text: payload }])); action('Show QR/Barcode'); chooseFormat('barcode');
+            check(decodeBarcode() === payload, `independent Code 128 pixel decoding preserves ${JSON.stringify(payload)}`);
+        }
+        check(d.querySelector('.qr-view').getBoundingClientRect().width > 900, 'code overlay grows with its wide parent block');
+        let barcodeCopied;
+        w.navigator.clipboard.writeText = async value => { barcodeCopied = value; };
+        click('.barcode-code'); await until(() => !!barcodeCopied, 'barcode click copy');
+        check(barcodeCopied === 'https://example.org/A?x=1', 'barcode click copies represented link');
+        click('.qr-pin'); await reload();
+        check(d.querySelector('.code-format').value === 'barcode' && decodeBarcode() === 'https://example.org/A?x=1' && stored()[0].codePin.format === 'barcode', 'pinned barcode format and payload restore after reload');
+        const barcodeBackup = JSON.stringify(stored()); await importJSON(barcodeBackup);
+        check(decodeBarcode() === 'https://example.org/A?x=1', 'barcode pin survives backup restoration');
+        setDensity(3);
+        await until(() => d.querySelector('.qr-error')?.textContent === 'Too wide. Reduce columns.', 'narrow barcode error');
+        check(!d.querySelector('.barcode-code') && d.querySelector('.code-format').value === 'barcode', 'unusable barcode width reports concise column guidance without changing format');
+        setDensity(1); await until(() => !!d.querySelector('.barcode-code'), 'automatic barcode retry after widening');
+        check(decodeBarcode() === 'https://example.org/A?x=1', 'reducing columns automatically restores exactly decoded barcode');
+        for (const payload of ['', 'abc\nxyz', 'café', '\ud800', 'x'.repeat(513)]) {
+            await importJSON(JSON.stringify([{ text: payload }])); action('Show QR/Barcode'); chooseFormat('barcode');
+            check(!d.querySelector('.barcode-code') && !!d.querySelector('.qr-error'), 'empty unsupported or oversized barcode fails explicitly without encoding substitute');
+        }
+        const useQR = [...d.querySelectorAll('.qr-content button')].find(b => b.textContent === 'Use QR'); useQR.click();
+        check(!!d.querySelector('.qr-code') && d.querySelector('.code-format').value === 'qr', 'barcode error offers functional QR fallback');
+        await importJSON(JSON.stringify([{ title: 'Ranked', text: '1234', tags: ['P1', 'same'] }, { title: 'Plain', text: '5678', tags: ['same'] }]));
+        click('#priority-toggle');
+        check(d.querySelector('.priority-separator')?.textContent === 'Other notes' && [...d.querySelector('#text-blocks').children].map(el => el.classList.contains('priority-separator') ? 'separator' : el.querySelector('.block-title').textContent).join('|') === 'Ranked|separator|Plain', 'priority separator divides ranked and normal notes in rendered order');
+        filterBy('#p1'); check(!d.querySelector('.priority-separator'), 'separator disappears when only ranked notes match'); filterBy(''); click('#priority-toggle');
+        check(!d.querySelector('.priority-separator'), 'custom arrangement has no priority separator');
+        await importJSON(JSON.stringify([{ text: 'Tags', tags: Array.from({ length: 20 }, (_, i) => 'tag' + i) }]));
+        await new Promise(resolve => setTimeout(resolve, 50));
+        const wideTags = d.querySelectorAll('#popular-tags button').length;
+        check(wideTags > 5 && d.querySelectorAll('#more-tag-list button').length === 20, 'wide tag strip fits more than five and expanded list includes all tags');
+        frame.style.width = '320px'; await new Promise(resolve => setTimeout(resolve, 60));
+        check(d.querySelectorAll('#popular-tags button').length < wideTags && d.documentElement.scrollWidth <= w.innerWidth, 'tag suggestions adapt to measured narrow width');
+        const findKey = new w.KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true }); d.dispatchEvent(findKey);
+        check(!findKey.defaultPrevented && !d.querySelector('input[type=search]'), 'both search fields are removed and browser Find is untouched');
+        d.querySelector('.appearance-settings').open = true;
+        const presetNotes = w.localStorage.getItem('textBlocks');
+        const preset = d.querySelector('#color-preset'); preset.value = 'coffeeblocks'; preset.dispatchEvent(new w.Event('change'));
+        check(d.querySelector('#background-color-hex').value === '#38281F' && d.querySelector('#surface-color-hex').value === '#E8D8C3' && d.querySelector('#note-color-hex').value === '#C6A27A', 'coffeeblocks applies coordinated coffee brown palette');
+        check(w.localStorage.getItem('textBlocks') === presetNotes && w.getComputedStyle(d.querySelector('.container')).color === 'rgb(0, 0, 0)', 'preset preserves saved note colors and automatic readable foreground');
+        await reload(); check(d.querySelector('#surface-color-hex').value === '#E8D8C3' && d.querySelector('#background-color-hex').value === '#38281F', 'preset page and surface colors persist');
+        // Connect Four stays independent from notes and uses actual worker-backed CPU play.
+        const gameKey = 'copyblocks.connectFour.v1', gameNotes = w.localStorage.getItem('textBlocks');
+        w.localStorage.removeItem(gameKey); await reload();
+        const engine = w.ConnectFourEngine;
+        for (const cells of [[35, 36, 37, 38], [0, 7, 14, 21], [0, 8, 16, 24], [6, 12, 18, 24]]) {
+            const board = Array(42).fill(0); cells.forEach(at => { board[at] = 1; });
+            check(engine.result(board) === 1 && engine.line(board).length === 4, 'Connect Four detects horizontal vertical and diagonal wins');
+        }
+        const edgeBoard = Array(42).fill(0); [5, 6, 7, 8].forEach(at => { edgeBoard[at] = 2; });
+        check(engine.result(edgeBoard) === 0, 'Connect Four does not wrap winning lines across edges');
+        const drawBoard = Array.from({ length: 42 }, (_, at) => (Math.floor(at / 7) % 2 ? [2, 2, 1, 1, 2, 2, 1] : [1, 1, 2, 2, 1, 1, 2])[at % 7]);
+        check(engine.result(drawBoard) === 3, 'Connect Four detects full-board draw');
+        const gravityBoard = Array(42).fill(0);
+        check(engine.drop(gravityBoard, 0, 1) === 35 && engine.drop(gravityBoard, 0, 2) === 28, 'pieces fall to lowest free row');
+        for (let i = 0; i < 4; i++) engine.drop(gravityBoard, 0, i % 2 + 1);
+        check(engine.drop(gravityBoard, 0, 1) === -1 && engine.drop(gravityBoard, -1, 1) === -1, 'full and invalid columns reject moves');
+        let invalidGame = false; try { engine.replay([0, 1, 0, 1, 0, 1, 0, 2]); } catch { invalidGame = true; }
+        check(invalidGame, 'saved games cannot continue after victory');
+        for (const level of ['easy', 'medium', 'hard']) {
+            check(engine.choose(engine.replay([6, 0, 6, 1, 5, 2, 5]), level) === 3, `CPU ${level} takes immediate win`);
+            check(engine.choose(engine.replay([0, 6, 1, 6, 2]), level) === 3, `CPU ${level} blocks immediate loss`);
+        }
+        check(d.querySelector('#connect-four').hidden && !d.querySelector('.editor-workspace').classList.contains('game-visible'), 'game starts collapsed without reserving side space');
+        frame.style.width = '1200px'; click('#connect-four-toggle');
+        await new Promise(resolve => setTimeout(resolve, 40));
+        const gameRect = d.querySelector('#connect-four').getBoundingClientRect(), editorRect = d.querySelector('.note-editor').getBoundingClientRect();
+        check(gameRect.left >= editorRect.right && Math.abs(gameRect.top - editorRect.top) < 2, 'visible game sits to right of submission box on desktop');
+        d.querySelector('#game-board button').click(); click('#game-collapse');
+        const pausedGame = w.localStorage.getItem(gameKey);
+        await new Promise(resolve => setTimeout(resolve, 550));
+        check(JSON.parse(pausedGame).moves.length === 1 && w.localStorage.getItem(gameKey) === pausedGame, 'collapse preserves game and cancels pending CPU turn');
+        click('#connect-four-toggle');
+        await until(() => JSON.parse(w.localStorage.getItem(gameKey)).moves.length === 2, 'CPU resumes after reopening');
+        check(d.querySelector('#game-status').textContent === 'Your turn.', 'CPU makes one legal move then returns turn');
+        const resumedGame = w.localStorage.getItem(gameKey); await reload();
+        check(w.localStorage.getItem(gameKey) === resumedGame && d.querySelector('#connect-four').hidden, 'reload preserves moves with game collapsed');
+        click('#connect-four-toggle');
+        d.querySelector('#game-difficulty').value = 'hard'; d.querySelector('#game-difficulty').dispatchEvent(new w.Event('change'));
+        check(d.querySelector('#game-moves').textContent.includes('new difficulty next game') && JSON.parse(w.localStorage.getItem(gameKey)).difficulty === 'medium', 'difficulty selection preserves current round');
+        click('#game-new');
+        check(JSON.parse(w.localStorage.getItem(gameKey)).difficulty === 'hard' && d.querySelector('#game-moves').textContent.startsWith('0 moves'), 'new game uses selected difficulty and clears board');
+        d.querySelector('#game-board button').click(); click('#game-new');
+        await new Promise(resolve => setTimeout(resolve, 550));
+        check(JSON.parse(w.localStorage.getItem(gameKey)).moves.length === 0, 'restart discards stale CPU responses');
+        const scores = { easy: { wins: 0, losses: 0, draws: 0 }, medium: { wins: 0, losses: 0, draws: 0 }, hard: { wins: 0, losses: 0, draws: 0 } };
+        w.localStorage.setItem(gameKey, JSON.stringify({ moves: [0, 1, 0, 1, 0, 2], difficulty: 'medium', scores })); await reload(); click('#connect-four-toggle');
+        d.querySelector('#game-board button').click();
+        check(d.querySelector('#game-status').textContent === 'You win!' && d.querySelectorAll('.game-winning').length === 4 && [...d.querySelectorAll('#game-board button')].every(button => button.disabled), 'winning move highlights line and stops play');
+        check(JSON.parse(w.localStorage.getItem(gameKey)).scores.medium.wins === 1, 'win score recorded under round difficulty');
+        await reload(); click('#connect-four-toggle');
+        check(JSON.parse(w.localStorage.getItem(gameKey)).scores.medium.wins === 1, 'restoring finished game does not count score twice');
+        w.confirm = () => false; click('#game-reset-scores'); w.confirm = () => true;
+        check(JSON.parse(w.localStorage.getItem(gameKey)).scores.medium.wins === 1, 'cancelled score reset preserves scores');
+        click('#game-reset-scores'); check(JSON.parse(w.localStorage.getItem(gameKey)).scores.medium.wins === 0, 'explicit score reset clears totals');
+        w.localStorage.setItem(gameKey, JSON.stringify({ moves: [6, 0, 6, 1, 5, 2, 5], difficulty: 'hard', scores })); await reload(); click('#connect-four-toggle');
+        await until(() => d.querySelector('#game-status').textContent === 'CPU wins.', 'CPU finishes winning round');
+        check(JSON.parse(w.localStorage.getItem(gameKey)).scores.hard.losses === 1, 'CPU victory records a loss at the correct difficulty');
+        click('#game-new');
+        const nativeWorker = w.Worker; w.Worker = function () { throw new Error('Workers unavailable'); };
+        d.querySelector('#new-text').value = 'Draft kept while playing';
+        try {
+            d.querySelector('#game-board button').click();
+            await until(() => JSON.parse(w.localStorage.getItem(gameKey)).moves.length === 2, 'CPU fallback without worker');
+        } finally { w.Worker = nativeWorker; }
+        check(d.querySelector('#game-status').textContent === 'Your turn.' && d.querySelector('#new-text').value === 'Draft kept while playing', 'bounded CPU fallback works without disturbing note draft');
+        click('#game-new');
+        const iconState = d.querySelector('#action-style-button').getAttribute('aria-pressed'); click('#action-style-button');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        check(d.querySelector('#game-new').textContent === (iconState === 'true' ? 'New game' : '↻') && d.querySelector('#game-new').getAttribute('aria-label') === 'New game', 'new game follows icon preference with accessible name');
+        frame.style.width = '320px'; await new Promise(resolve => setTimeout(resolve, 40));
+        check(d.documentElement.scrollWidth <= w.innerWidth && d.querySelector('#connect-four').getBoundingClientRect().top >= d.querySelector('.note-editor').getBoundingClientRect().bottom, 'game stacks without overflow at 320px');
+        const firstColumn = d.querySelector('#game-board button'); firstColumn.focus();
+        firstColumn.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+        check(d.activeElement === d.querySelectorAll('#game-board button')[1], 'game columns support arrow-key navigation');
+        const gameSetItem = w.Storage.prototype.setItem; w.Storage.prototype.setItem = () => { throw new Error('Full'); };
+        try { click('#game-new'); } finally { w.Storage.prototype.setItem = gameSetItem; }
+        check(d.querySelector('#game-storage').textContent.includes('not saved'), 'game storage failure is visible without breaking play');
+        check(w.localStorage.getItem('textBlocks') === gameNotes, 'game moves scores difficulty and restart leave notes untouched');
+        w.localStorage.setItem(gameKey, '{bad'); await reload();
+        check(d.querySelector('#game-moves').textContent.startsWith('0 moves'), 'invalid game storage recovers to fresh board');
         if (new URLSearchParams(location.search).has('forceFailure')) check(false, 'intentional runner failure probe');
         output.dataset.status = 'passed';
         output.textContent = results.join('\n') + `\nALL PASSED (${results.length} assertions)`;

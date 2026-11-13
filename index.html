@@ -15,13 +15,25 @@
         <div class="header-buttons">
             <button id="backups-button" aria-haspopup="dialog">Backups</button>
             <button id="action-style-button" aria-pressed="false">Use icons</button>
-            <button id="search-button" aria-expanded="false" aria-controls="note-search-panel">Search</button>
+            <button id="connect-four-toggle" aria-expanded="false" aria-controls="connect-four">Connect Four</button>
             <button id="clear-button">Clear All</button>
             <div class="density-control">
                 <label for="density-slider">Columns</label>
                 <input id="density-slider" type="range" min="1" max="3" value="3" step="1" aria-describedby="density-value">
                 <output id="density-value" for="density-slider">3</output>
             </div>
+            <details class="appearance-settings">
+            <summary>Colors</summary>
+            <div class="appearance-panel">
+            <label for="color-preset">Preset</label>
+            <select id="color-preset">
+                <option value="">Custom</option>
+                <option value="classic">Classic</option>
+                <option value="coffeeblocks">coffeeblocks</option>
+                <option value="midnight">Midnight</option>
+                <option value="sage">Sage</option>
+            </select>
+            <p class="preset-help">Applies to page, surfaces and the draft note color. Saved notes keep their colors.</p>
             <fieldset class="color-control">
                 <legend>Page background</legend>
                 <label for="background-color-picker">Color</label>
@@ -30,8 +42,19 @@
                 <input type="text" id="background-color-hex" class="hex-input" value="#F0F0F0" spellcheck="false" aria-describedby="background-color-error">
                 <span id="background-color-error" class="color-error" aria-live="polite"></span>
             </fieldset>
+            <fieldset class="color-control">
+                <legend>Interface surfaces</legend>
+                <label for="surface-color-picker">Color</label>
+                <input type="color" id="surface-color-picker" value="#ffffff">
+                <label for="surface-color-hex">HEX</label>
+                <input type="text" id="surface-color-hex" class="hex-input" value="#FFFFFF" spellcheck="false" aria-describedby="surface-color-error">
+                <span id="surface-color-error" class="color-error" aria-live="polite"></span>
+            </fieldset>
+            </div>
+            </details>
         </div>
     </header>
+    <div class="editor-workspace">
     <section class="container note-editor" aria-label="Create or edit a note">
         <div class="editor-fields">
             <div class="input-group">
@@ -68,16 +91,24 @@
             </div>
         </div>
         <p id="status" role="status" aria-live="polite"></p>
+        <p id="copy-status" class="sr-only" role="status" aria-live="polite"></p>
     </section>
-    <section class="container blocks-section" aria-label="Saved text blocks">
-        <div id="note-search-panel" hidden>
-            <div class="note-search-row">
-                <label for="note-search">Search notes</label>
-                <input id="note-search" type="search" placeholder="Title, text or tags" aria-describedby="note-search-help">
-                <button id="close-search">Close search</button>
-            </div>
-            <p id="note-search-help">Escape clears and closes. Press Ctrl+F (Cmd+F on Mac) again in this field for browser Find.</p>
+    <aside id="connect-four" class="container" aria-labelledby="connect-four-heading" hidden>
+        <div class="game-heading"><h2 id="connect-four-heading">Connect Four</h2><button id="game-collapse" aria-label="Collapse Connect Four" title="Collapse Connect Four">−</button></div>
+        <div class="game-controls">
+            <button id="game-new" title="New game" aria-label="New game">New game</button>
+            <label for="game-difficulty">Difficulty</label>
+            <select id="game-difficulty"><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard</option></select>
         </div>
+        <p id="game-status" role="status" aria-live="polite"></p>
+        <div id="game-board" role="group" aria-label="Connect Four board. Choose a column to drop a piece."></div>
+        <p class="game-help">You: × · CPU: ○ · Four in a row wins.</p>
+        <p id="game-moves"></p>
+        <details class="game-record"><summary>Scores &amp; moves</summary><p id="game-scores"></p><p id="game-history"></p><button id="game-reset-scores">Reset scores</button></details>
+        <p id="game-storage" role="status"></p>
+    </aside>
+    </div>
+    <section class="container blocks-section" aria-label="Saved text blocks">
         <div class="blocks-toolbar">
         <div id="tag-filter" class="tag-filter" role="group" aria-label="Filter notes by tag">
             <div class="tag-filter-row">
@@ -87,9 +118,7 @@
             </div>
             <details id="more-tags" hidden>
                 <summary id="more-tags-label">More tags</summary>
-                <input id="tag-search" type="search" placeholder="Find a tag" aria-label="Find a tag">
                 <div id="more-tag-list" class="filter-tags"></div>
-                <p id="tag-search-empty" hidden>No matching tags.</p>
             </details>
         </div>
         <button id="priority-toggle" type="button" aria-pressed="false">Priority</button>
@@ -116,7 +145,10 @@
     <div class="copied-feedback">Copied!</div>
     <script src="vendor/qrcodegen.js"></script>
     <script src="qr-code.js"></script>
+    <script src="vendor/JsBarcode.code128.min.js"></script>
+    <script src="barcode.js"></script>
     <script src="blockscript.js"></script>
+    <script src="connect-four.js"></script>
 
 </body>
 

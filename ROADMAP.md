@@ -15,23 +15,23 @@ Implementation priorities, stable numbered steps, and validation history. See [R
 | P1 | Block action placement | Implemented in Step 14: evenly spaced top Copy/Edit/Delete controls and bottom code controls. Step 16 replaces movement buttons with drag-and-drop. |
 | P1 | Drag destination preview | Implemented in Step 16: drag handles replace Move up/down, with an empty dotted insertion placeholder and keyboard/touch support. |
 | P2 | Words/icons toggle | Implemented in Step 15: persistent words/icons preference, inline Save/Cancel while editing and red Delete/Cancel controls. |
-| P1 | Popular tag filters | Implemented in Step 17: responsive frequent-tag buttons/counts, collapsible searchable overflow and a visible active tag; detected links are not filterable. |
+| P1 | Popular tag filters | Implemented in Step 17: as many frequent-tag chips/counts as fit, collapsible Show all tags and a visible active tag; no search boxes or URL filtering. |
 | P1 | Color reuse shortcut | Implemented in Step 18: note HEX buttons fill the note picker without entering edit mode or saving. |
 | P1 | Compact interface | Implemented in Step 14: a smaller page/block title area and adjacent responsive control groups. |
 | P2 | Backup interface | Implemented in Step 19: compact Backups dialog, validation, preview counts, explicit replacement and storage-failure recovery. |
 | P1 | Wrapping / separate blocks div | Implemented responsive wrapping and a separate saved-blocks section. |
 | P2 | Detect links | Detected-link lists and live editor preview preserve card-click copying. Step 17 removed URL filtering. |
-| P2 | Barcode / QR | QR implemented in Step 3 with a bundled encoder and independent decode tests. Linear barcodes remain deferred pending scanner/symbology requirements. Veto case normalization: exact text is preserved. |
+| P2 | Barcode / QR | QR and Code 128 implemented with bundled open-source encoders and independent decode tests. Veto case normalization: exact text is preserved. |
 | P2 | Matching link and QR numbers | Implemented in Step 9: centered QR overlays; number links/codes only when multiple distinct links exist. Full text QR stays separate. |
-| P1 | Per-note creation options | Planned in Step 11: saved Generate QR and Detect links checkboxes; enabled QR is shown alongside text by default. Step 12 adds the working Generate barcode checkbox. |
-| P2 | Barcode generation | Planned in Step 12: local barcode generation, validated payloads, default display when checked, and independent scan tests. |
-| P2 | Request feature | Use [GitHub issues](https://github.com/ajklicker33/Copyblocks/issues) now. Defer an in-app submission service until there is a need for authentication, spam controls and maintenance. |
-| P3 | Document Picture-in-Picture | Optional experiment: detect the API at runtime, expose the control only when available, and keep the main window fully usable. Test lifecycle and shared state before shipping; do not rely on a hard-coded browser list. |
-| P3 | Electron | Defer packaging until a concrete desktop-only need exists. Veto adding a desktop runtime solely to fix browser controls. |
+| P1 | Persistent code pinning | Implemented Step 11: restore pinned code overlays after reload; no creation checkboxes or inline code images. |
+| P2 | Barcode generation | Implemented Step 12: block-width QR/Barcode overlay, automatic retry after width changes, persistent pinned format and combined action label/icon. |
+| — | Request feature entry point | Discontinued at user request; do not implement Step 4. |
+| — | Document Picture-in-Picture | Discontinued at user request; do not implement Step 5. |
+| — | Desktop packaging | Discontinued at user request; do not implement Step 6. |
 
 ## Executable implementation plan
 
-To start a task, prompt **"Begin work on Step X in ROADMAP.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7–10, 13–20 and 22–25 are **Complete**; Steps 4–6, 11–12, 21 and 26–27 are **Not started**. Step 27 is optional. Recommended order: **21 → 26 → 11 → 12 → 4**: organization and presentation. Steps 5–6 remain lower-priority optional work. New requests are scoped below; they are not implemented merely by being added to this plan.
+To start a task, prompt **"Begin work on Step X in ROADMAP.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7–22 and 24–26 are **Complete**; Step 23 is **Superseded**. Steps 4–6 are **Discontinued**. Step 27A is **Complete**; optional Stages 27B–C remain unimplemented. Step 28 is **Postponed** at user request. Review the standard Connect Four game before selecting a variant; Stage 27B requires clarification of the removal rule. Do not resume discontinued or postponed steps unless explicitly requested. New requests are scoped below; they are not implemented merely by being added to this plan.
 
 ### Instructions for the implementing agent
 
@@ -62,7 +62,7 @@ Validation: all 40 assertions plus actual download verification passed in headle
 
 Planned refinement: Step 9 adds ordered link lists and corresponding per-link QR numbers.
 
-Step 11 makes link detection optional per note, including the editor preview and detected-link filter entries.
+Link detection remains automatic. The former Step 11 Detect links checkbox proposal is deferred; Steps 11–12 now concern persistent code overlays.
 
 Scope: derive distinct HTTP(S) links dynamically from each block's text, using URL parsing and safe DOM construction. Show detected URLs as a list under a Detected links heading, without an Open link prefix. Preview links live under the text editor and include detected URLs in the filter alongside hashtags. Recompute after edits and imports; do not store redundant link metadata. Leave ambiguous punctuation outside a link where possible and document the detection rule.
 
@@ -80,7 +80,7 @@ Validation: all 67 browser assertions (40 baseline plus 27 link/list/filter chec
 
 Planned refinement: Step 9 adds numbered per-link QR codes. The current implementation generates one full-body QR per block, so multiple matching link/QR pairs require new behavior rather than only labels.
 
-Step 11 adds a saved Generate QR checkbox that displays QR alongside the text by default when enabled. Step 12 separately adds barcode generation.
+Step 11 adds persistent overlay pinning; Step 12 adds barcode format selection in that overlay. Neither step adds creation checkboxes or inline code images.
 
 Scope: implement QR first, using a bundled, licensed encoder with no network requests or CDN dependency. Add a Show QR / Hide QR action per block, encoding the exact text on demand. Keep generation lazy; regenerate visible codes after an edit and release removed views. Provide an accessible text description and an understandable message for content that exceeds the encoder's capacity.
 
@@ -94,27 +94,15 @@ Limitation: physical camera/scanner testing remains manual, particularly for den
 
 ### Step 4 — Add a feature-request entry point
 
-**Status:** Not started. **Priority:** P2.
-
-Scope: add a visible Request feature link to `https://github.com/ajklicker33/Copyblocks/issues/new`, with a generic feature-request title/body template. Explain that it opens GitHub. Keep this as a simple link; do not introduce a submission backend or send anything automatically.
-
-Acceptance: the action opens the correct repository's issue composer, does not include saved blocks or other user data, works by keyboard, and leaves all existing toolbar controls working. No issue is submitted during validation.
+**Status:** Discontinued (2026-11-13), at user request. Do not add an in-app feature-request entry point. Step number retained for history.
 
 ### Step 5 — Add optional Document Picture-in-Picture
 
-**Status:** Not started. **Priority:** P3.
-
-Scope: feature-detect `window.documentPictureInPicture?.requestWindow` and secure context at runtime. Offer a pop-out action only when available; request the window from a user gesture. Prefer moving the existing saved-block section into the pop-out and restoring it on close so there is one source of state. Copy styles locally and handle denied requests without disrupting the main view.
-
-Acceptance: supported browsers can open, copy, filter and close the pop-out; edits/imports remain synchronized; closing restores the section exactly once; repeated opening does not duplicate listeners or lose data. Unsupported browsers retain full baseline functionality. Validate the supported path in a browser exposing the API and the unsupported path with the API absent; if no supported environment is available, record that validation blocker rather than declaring completion.
+**Status:** Discontinued (2026-11-13), at user request. Do not implement a pop-out window or Document Picture-in-Picture. Step number retained for history.
 
 ### Step 6 — Evaluate desktop packaging
 
-**Status:** Not started. **Priority:** P3. **Deliverable:** decision, not an Electron build.
-
-Scope: review the completed web app and write a short decision in this section comparing continued browser use, an installable web app and Electron. Assess concrete desktop needs, offline behavior, clipboard permissions, data migration, update maintenance and distribution cost. Default to retaining the browser app unless evidence establishes a desktop-only requirement.
-
-Acceptance: record a go/no-go decision, reasons and measurable criteria that would change it. If Electron is justified, specify a separately scoped implementation proposal and verification plan. Do not add a desktop runtime, installer or publishing credentials as part of this evaluation.
+**Status:** Discontinued (2026-11-13), at user request. Do not evaluate or implement desktop packaging. Step number retained for history.
 
 ### Step 7 — Separate tags from copied content
 
@@ -162,7 +150,7 @@ Presentation refinement: show QR codes in an overlay centered on their own block
 
 Scope: number detected links and link codes only when a block contains more than one distinct link. A single link uses an unnumbered list entry and a Link code label. For multiple links, use ordered lists in the editor preview and saved blocks, numbered 1, 2, 3 in first-appearance order; repeated occurrences of the same parsed URL share one number. On saved blocks, provide on-demand QR views for those links, labeled **Link 1**, **Link 2**, etc., so the list and QR images can be matched at a glance. Each link QR encodes exactly the destination represented by its matching detected link, using the existing URL parser's normalization. Do not include the display number in the encoded payload.
 
-Preserve the existing exact-body QR under a distinct **Full text QR** label; it must not be numbered as if it represents one detected link. With no detected links, only the full-text QR is available. Keep generation local, with Show/Hide controls and accessible descriptions identifying the block and link number. If Step 11 is implemented, honor its saved QR/default-visibility and Detect links settings: checked QR shows the full-text QR and available numbered link QR views by default; unchecked QR stays on demand. The editor needs numbered link preview only; QR generation remains on saved blocks. Numbering is derived presentation state, not stored metadata, and restarts at 1 for each block.
+Preserve the existing exact-body QR under a distinct **Full text QR** label; it must not be numbered as if it represents one detected link. With no detected links, only the full-text QR is available. Keep generation local, with Show/Hide controls and accessible descriptions identifying the block and link number. If Step 11 is implemented, restore only pinned overlays and their selected payload; unpinned codes remain on demand. Step 12 adds the alternative barcode format in the same overlay. The editor needs numbered link preview only; QR generation remains on saved blocks. Numbering is derived presentation state, not stored metadata, and restarts at 1 for each block.
 
 Acceptance: a block with three distinct links shows three matching link/QR identifiers, and an independent decoder recovers the correct destination from each image. Full-text QR continues to decode to the complete original body. Deduplication, punctuation handling, edits, imports and link removals update list order, labels and visible QR payloads together without stale associations. Reordering or filtering blocks does not change their internal link numbering. QR controls and link clicks do not copy the body; ordinary card clicks still do. Verify zero/one/multiple links, repeated URLs, long destinations, failed QR generation and 320px layout. Numbers never enter copied text, stored bodies or backup metadata.
 
@@ -183,28 +171,38 @@ Legacy behavior: existing supported opaque CSS HEX/RGB/named colors normalize to
 
 Validation: all 177 browser assertions plus actual downloaded JSON verification passed. Checks cover field synchronization, invalid input, edit/cancel, reloads, backup round trips, legacy conversion, transparent fallback, background/note isolation, copy/QR exclusion, input labels/focus and 320px fit. Computed body/title/link contrast and opaque chip/label/button surfaces passed a 4.5:1 check across black, white, gray and primary-color notes. Text uses black or white based on relative luminance; focus rings use dark and white layers. Native operating-system picker dialog interaction remains a manual check; automated tests exercise its input events and editable HEX alternative.
 
-### Step 11 — Saved QR and Detect links creation options
+### Step 11 — Persistent code-overlay pinning
 
-**Status:** Not started. **Priority:** P1. **Dependencies:** Steps 2–3.
+**Status:** Complete (2026-11-12). **Priority:** P1. **Dependencies:** Steps 3, 9.
 
-Scope: add labeled **Generate QR code** and **Detect links** checkboxes to the block creator/editor. Save a validated per-note options object, defaulting to `showQr: false` and `detectLinks: true` for new and legacy notes. Include `showBarcode: false` in the same schema for Step 12; do not expose a nonfunctional barcode checkbox before the generator exists. Optional fields must be booleans, and malformed imported options must not replace the current collection.
+Replace the creation-checkbox proposal with persistent pinning from the existing code overlay. Do not add Generate QR or Generate barcode controls to the creator/editor. Codes appear only in centered overlays, never as inline content in the block body. Keep note dimensions and body text unchanged. Link detection retains its current automatic behavior; the previously proposed Detect links checkbox is deferred outside these steps.
 
-When Generate QR code is checked, display the code alongside the body immediately after saving and by default after reload or re-render. Keep full text visible and unchanged. Unchecked notes retain the existing on-demand Show QR control. A per-card Hide QR action temporarily hides the view for the current session; the editor checkbox controls the saved default. Preserve temporary visibility choices during unrelated renders and reset them when the saved option changes. Generate codes only for rendered notes; cache unchanged views and invalidate them when payload/settings change. If Step 9 exists, apply the default to full-text and numbered per-link QR views.
+Proposed interaction: one code overlay per note, with the existing pin at top left, flexible content selector between controls, and red X at top right. Pinning saves the overlay's open state and chosen payload so reload restores the same code. Step 12 extends this state with QR/Barcode format selection. Pinned overlays ignore outside clicks and Escape; unpinning leaves the panel open for this session but removes automatic reopening. Explicit X/Hide closes it and clears its saved pin. Ordinary unpinned openings stay session-only. These close/unpin semantics are part of this draft for review.
 
-Detect links controls live preview, saved link lists and any per-link QR views. Step 17 removes link filtering entirely; do not restore it here. Turning it off never removes URLs from the body or disables full-text QR/copy. Tag filtering remains independent of link detection. The control is useful because URL extraction is optional interpretation of text; explicit Tags remain independent. Do not add automatic hashtag extraction, case conversion, trimming or generic parsing switches. Add future parsing controls only when a concrete feature and its behavior are defined.
+Persist validated per-note presentation settings, not generated images. New and legacy notes default to unpinned. Keep settings in JSON backups, preserve them through edits and unrelated renders, and reject malformed settings without replacing existing notes. Store full-text versus a link destination rather than a fragile link-list index; if editing removes the selected destination, fall back to the first remaining link or full text and announce the change. Duplicate notes start unpinned. Filtered-out notes must not force themselves visible merely because they are pinned; restore the overlay when they become visible again. Pin persistence must not save an unfinished editor draft or reorder notes. A failed settings write must report the error without claiming the pin was saved.
 
-Acceptance: options survive edit/cancel/reload/export/import and legacy records retain existing behavior. Checked QR appears by default with the correct decoded body; unchecked QR remains on demand. Detect links can be turned off/on without changing text, metadata tags or copied/encoded content. Test option combinations, malformed imports, temporary Show/Hide behavior, filtered collections, tag-filter preservation, unsupported/oversized QR payloads and narrow screens. Checkboxes must be keyboard accessible and must not accidentally copy a block.
+Acceptance: test pin/unpin/X/Hide behavior, reload, export/import, legacy defaults, invalid settings, edits/removal of selected links, duplicate defaults, filters/search/priority views, inaccessible storage, focus return, and 320px overlays. Keep QR payloads independently decodable and copied text exact. Preserve conditional numbering: one link is unnumbered; multiple links have matching numbers. Do not generate codes for hidden notes.
 
-### Step 12 — Barcode generation with default display
+Implementation: optional per-note codePin settings store QR format and full-text/null or the exact normalized link destination. Pin, unpin, selected payload and explicit closure persist transactionally without saving editor drafts. Reload/import restores only visible pinned notes; duplicates remain unpinned. Removing a selected link during a saved edit chooses the first remaining link or full text and announces the fallback. Failed writes retain the prior state and draft. Generated code images remain runtime-only overlay content.
 
-**Status:** Not started. **Priority:** P2. **Dependency:** Step 11.
+Validation: all 443 browser assertions and actual JSON download verification pass. Tests cover selected-link restoration, full-text selection without draft saving, backup restoration, hidden notes, fallback after editing, duplicate defaults, unpin versus close, malformed pin settings and simulated pin/close persistence failures. Note saves now preserve the unsaved editor draft on storage failure instead of adding an unsaved card to the session.
+### Step 12 — Barcode support in the shared code overlay
 
-Scope: implement a bundled, licensed barcode encoder and expose the functional **Generate barcode** checkbox next to Generate QR code in the creator/editor. First establish and document the supported barcode symbology, scanner requirements and payload character/length limits; ask for the intended scanner or identifier format if those constraints cannot be determined. Do not assume a linear barcode can represent every body that a QR code supports.
+**Status:** Complete (2026-11-13). **Priority:** P2. **Dependency:** Step 11.
 
-Checked notes display their barcode alongside the full text by default, persist `showBarcode`, and restore the default after reload. QR and barcode checkboxes are independent and may both be checked. Provide accessible descriptions and session Show/Hide behavior consistent with Step 11. Encode the complete original body where supported; never silently trim, uppercase, truncate, substitute characters or encode a different field. Unsupported content gets an explanatory message and leaves copying/QR functional. Keep link-specific barcode generation out of this step; link/QR numbering remains governed by Step 9.
+Implementation: bundled JsBarcode 3.11.6 (MIT) generates Code 128 with automatic code-set selection and checksum. Supports printable ASCII U+0020–U+007E, up to 512 characters; rejects controls, Unicode and empty payloads without changing text. Bars use 2px modules, 80px height and 20px quiet zones. The shared overlay spans its parent block. If the encoded width cannot fit, show **Too wide. Reduce columns.** and a Use QR fallback. Changing Columns or resizing automatically retries and displays the barcode once it fits, without another click. Pinned format/payload survives reload and backup restoration. The combined action supports words and QR / barcode icons.
 
-Acceptance: an independent decoder recovers exact supported payloads from rendered barcodes. Test checked/unchecked/both-code defaults, editing, reloads, imports, blank/oversized/unsupported Unicode payloads, invalid settings, hiding/reopening and narrow layouts. Record encoder version/license, symbology and tested limits. Confirm scan compatibility on the intended physical scanner before claiming that hardware workflow is validated; automated decoding alone is not hardware validation. No network service or CDN at runtime.
+Validation: all **451 browser assertions** and actual downloaded JSON verification passed. Independent ZXing decoding checks numeric, mixed-case, punctuation/space and URL payloads from rendered pixels. Checks include narrow-width error and automatic recovery after reducing columns, format/payload persistence, unsupported inputs, copy accuracy and QR fallback. See [vendor provenance and limits](vendor/README.md). Physical scanner accuracy remains best effort.
 
+Implement Code 128 using only free/open-source code or an original open-source implementation, bundled locally. No proprietary software, paid dependencies, license keys or hosted encoder services. Retain required open-source license notices; open source is licensed, not license-free. Add the encoder to the same overlay; no creation checkboxes and no inline barcode images. Use Code 128 and document the supported code sets, character/encoding limits, checksum, quiet zones and sizing rules. Apply a conservative functional-width/module-size limit based on the rendering space; if a payload is too long to produce a usable barcode, show an explicit too-long error and offer QR. Reject prohibited characters or unsupported encoding with a specific error; do not replace, truncate or silently transcode them. Accuracy is best effort supported by independent decoding tests, not an unverified scan guarantee. Ask for the intended scanner/identifier format if needed. Do not assume a barcode can represent every QR payload.
+
+When barcode support is functional, rename the block action **Show QR/Barcode**, with **Hide QR/Barcode** while open. In icon mode, show a local QR symbol, a slash, and a distinct barcode symbol, with an accessible name and tooltip matching the word version. Until that support exists, retain the truthful Show QR/Hide QR label rather than offering a nonfunctional barcode action.
+
+Proposed interaction: select QR or Barcode within the shared overlay; show one format at a time. Persist the selected format and payload with the pin, so either a pinned QR or a pinned barcode returns after reload. The pin and red X apply to the shared overlay. Keep the payload selector between those corner controls; integrate format selection compactly without adding clutter to the main block. A format switch retains the selected payload. Clicking the rendered QR/barcode, or activating it by keyboard, copies exactly the represented text/link, never its display label or priority tag. This extends barcode payload choices to the same full-text/link choices as QR.
+
+Unsupported payloads show a clear error inside the overlay and offer switching to QR; never silently trim, uppercase, truncate, substitute text, or change the selected payload. Preserve the original note, copied text and custom arrangement. Cache generated content only while appropriate and invalidate after payload/format changes. No network encoder or CDN at runtime.
+
+Acceptance: independently decode supported barcode payloads exactly; verify both formats' pin/reload/import behavior, selected link/full-text preservation, format switching, edits, invalid settings, unsupported Unicode/length, copy activation, combined word/icon labels, X/unpin semantics, and narrow layouts. Document encoder version/license, symbology and limits. Physical scanner validation remains separate from automated decoding.
 ### Step 13 — Bring the edited block to the top and highlight it
 
 **Status:** Complete (2026-11-10). **Priority:** P1.
@@ -227,7 +225,7 @@ Layout refinement: reduce the page title/header height and block-title padding w
 
 Scope: place **Copy**, **Edit** and **Delete** in an evenly spaced row aligned to the top border of each block. Reserve space so the controls do not overlap the title, the editing outline or content. Place **Show/Hide QR** and, when implemented, **Show/Hide barcode** in an evenly spaced row anchored at the bottom of the block, even when neighboring cards have different content heights. The newer Step 16 request supersedes the previous Move up/down row: use drag-and-drop with a destination placeholder instead. If Step 16 is not yet complete, retain existing movement controls temporarily rather than removing the keyboard reordering path.
 
-Rendered code images remain content above the bottom code-control row; opening a code must not move those controls into the middle of the block. Do not add a nonfunctional barcode control before Step 12. When barcode support arrives, use the same code-control row. Maintain equal spacing for whichever code controls exist. Preserve all current confirmation, filtering, editing, copy and Show/Hide behavior.
+Historical placement (superseded by Step 9 and revised Steps 11–12): rendered code images remain content above the bottom code-control row; opening a code must not move those controls into the middle of the block. Do not add a nonfunctional barcode control before Step 12. When barcode support arrives, use the same code-control row. Maintain equal spacing for whichever code controls exist. Preserve all current confirmation, filtering, editing, copy and Show/Hide behavior.
 
 Acceptance: verify reduced header/title whitespace and adjacent control groups without horizontal overflow at 320px or overlap at 200% zoom. Inspect short/long text, titles, tags, multiple links, visible QR images and error messages at mobile and desktop widths. Top and bottom controls remain evenly distributed without overflow, clipped focus rings or title overlap. Keyboard tab order follows the visual order; control clicks never trigger the card's copy handler. Existing disabled movement rules, including editing rules if Step 13 is present, remain effective. Test with the words/icons preference if Step 15 is already implemented.
 
@@ -268,6 +266,8 @@ Implementation: a dedicated Reorder handle uses pointer capture for mouse/touch,
 Validation: all 302 browser assertions and actual JSON download verification pass. Native browser-protocol mouse, touch and keyboard input covers one/two/three columns, cross-row moves, first/last placement, unequal-height cards, edge scrolling, outside and same-position drops, Escape/touch cancellation, focus, no accidental copying, filtered/editing restrictions, import interruption, 320px fit, simulated storage failure and reload persistence. Physical-device touch feel and screen-reader announcements remain manual checks.
 
 ### Step 17 — Compact popular tags with live counts
+
+Refinement completed 2026-11-13: the strip measures available width and fits as many chips as possible instead of fixed three/five limits. **Show all tags** expands every tag with counts; an active overflow tag stays visible. Removed the tag-search field and note-search interface (superseding Step 23); Ctrl+F/Cmd+F remains browser Find. Counts and fitting update live. The following original implementation notes are historical where they describe fixed limits/search.
 
 **Status:** Complete (2026-11-11). **Priority:** P1. **Dependencies:** Steps 7–8.
 
@@ -321,10 +321,15 @@ Validation: all 330 browser assertions and actual downloaded JSON verification p
 
 ### Step 21 — Foreground surface color preference
 
-**Status:** Not started. **Priority:** P2. **Dependency:** Step 10.
+Refinement completed 2026-11-13: compact presets **Classic**, **coffeeblocks**, **Midnight** and **Sage** set page, interface surfaces and the current note draft color with automatic contrast. Existing saved notes retain their colors; page/surface preferences persist. Covered by the 451-assertion regression run.
+
+**Status:** Complete (2026-11-12). **Priority:** P2. **Dependency:** Step 10.
 
 Add a synchronized color picker/HEX preference for foreground interface surfaces: header, editor and saved-notes container backgrounds. Keep existing per-note colors and page background independently configurable. Default to current white surfaces and persist in a separate preference key; do not change note backup data. Reuse automatic foreground contrast selection for text on those surfaces; explicitly style labels, links, borders, inputs and focus rings so inherited colors remain readable. Preserve red Delete/Cancel controls on readable button surfaces. Test dark/light colors, invalid HEX, reload and unavailable storage. Keep preferences grouped compactly rather than exposing another large permanent panel.
 
+Implementation: a collapsed Colors disclosure groups page background and Interface surfaces picker/HEX controls. Surface color uses its own surfaceColor preference; the header, editor and saved-note containers inherit automatic black/white text. Inputs, error messages, focus rings and destructive controls retain readable surfaces. Per-note colors, page background and backup data remain independent. The popup clamps to its containing width on narrow screens.
+
+Validation: all 414 browser assertions and actual downloaded JSON verification passed. Checks cover dark/light foreground contrast, helper labels, independent note/background data, invalid HEX, picker synchronization, reload, collapsed defaults, 320px expanded-panel geometry and simulated storage failure. Physical screen-reader and browser zoom checks remain manual.
 ### Step 22 — Brief in-block copy confirmation
 
 **Status:** Complete (2026-11-12). **Priority:** P1.
@@ -337,7 +342,9 @@ Validation: all 339 browser assertions and actual downloaded JSON verification p
 
 ### Step 23 — Compact note search with Ctrl+F
 
-**Status:** Complete (2026-11-12). **Priority:** P1. **Dependency:** Step 17.
+**Status:** Superseded (2026-11-13), previously complete (2026-11-12). **Priority:** P1. **Dependency:** Step 17.
+
+Removed at user request along with tag search. Tag chips provide filtering and Ctrl+F/Cmd+F uses native browser Find. The implementation and validation below describe historical behavior.
 
 Provide an accessible compact search control that filters saved notes live by title, body and separate tags, case-insensitively. Ctrl+F (Cmd+F on macOS) opens/focuses this app search while the page is active; prevent the browser default only when the control can be opened. Escape clears/closes search and restores focus. Do not intercept shortcuts in an open modal. Combine search with the selected tag using AND, show result counts/empty state, and keep active edits visible as labeled exceptions. Disable reordering while search restricts the collection. Search is presentation state only: export still includes all notes. Test Unicode, clearing, keyboard access, filtered editing and no hidden-note loss. Offer a discoverable way to use browser Find if needed.
 
@@ -355,6 +362,8 @@ Implementation: a labeled native Columns range slider replaces the waffle menu a
 Validation: all 390 browser assertions plus actual downloaded JSON verification passed. Coverage includes wide maximum above three, narrow clamping and restoration without overwriting preference, reload/legacy values, native Home/End/arrows, pinned QR preservation, drag cancellation without writes, long content and 200% CSS zoom. Existing reduced-motion checks remain passing; physical browser zoom remains a manual release check.
 ### Step 25 — Prioritize by P0–P99 tags
 
+Refinement completed 2026-11-13: an **Other notes** separator spans the grid between visible priority notes and unranked notes. It appears only in Priority view when both groups are visible, respects tag filters and leaves saved custom order unchanged. Covered by the 451-assertion regression run. Search references below are historical; Step 23 has been removed.
+
 **Status:** Complete (2026-11-12). **Priority:** P2. **Dependencies:** Steps 7, 16.
 
 Use a compact top-right Priority toggle above the saved blocks. Custom arrangement is the default, including after reload. Priority mode changes only the displayed order, sorting separate metadata tags P0 through P99 numerically and case-insensitively; P0 is highest. Use the lowest number when several priority tags exist. Keep ties and unranked notes stable relative to custom order, with unranked notes last. Ignore malformed tags and body/title mentions. Keep tag/search filters functional in both views and restore custom relative order when toggled off. Preserve the established active-edit exception behavior.
@@ -367,17 +376,28 @@ Validation: all 401 browser assertions plus actual downloaded JSON verification 
 
 ### Step 26 — Stationary editing and duplicate action
 
-**Status:** Not started. **Priority:** P1. Supersedes Step 13's temporary promotion and refines Steps 15/22.
+**Status:** Complete (2026-11-12). **Priority:** P1. Supersedes Step 13's temporary promotion and refines Steps 15/22.
 
 Keep an edited note in its existing displayed position, retaining the dotted border. Preserve its position when it becomes a filter exception, and keep scroll stable through Edit/Save/Cancel. Remove visible Copied! feedback from the editor/status section; retain the brief in-block overlay and a separate visually hidden live announcement. Clipboard errors remain visible.
 
 While editing, replace Copy with Duplicate (Dupe only if needed for space) and use a distinct duplicate-with-plus SVG icon in icon mode. Duplicate validates and creates a separate note from the current draft, inserted after the source in custom order, without overwriting the source. Keep the original edit/draft active and report success; failed validation or persistence must create nothing. Sorting/filtering remains derived from saved records. QR clicking continues to copy its represented payload. Test draft independence, saved order, filters/priority view, scroll, duplicate clicks, storage failure, and accessible word/icon controls.
 
-### Step 27 — Optional Connect Four subpage
+Implementation: editing no longer promotes the note in the render sequence; the dotted outline and filter-exception label remain. During editing, Duplicate replaces Copy with a distinct plus/duplicate icon. It validates the current draft, writes the proposed collection before updating the session, inserts after the source in custom order, and preserves the original edit and draft. Copy success uses only the in-block overlay and a separate visually hidden live region; errors remain visible. Save/Cancel and duplication preserve scroll.
 
-**Status:** Not started; optional. **Priority:** P3. Do not insert into the normal note-feature sequence without explicit selection.
+Validation: all 425 browser assertions plus actual downloaded JSON verification passed. Checks cover stationary display/filter exceptions, empty/invalid drafts, simulated duplicate storage failure, custom insertion order, unchanged original, independent later edits, retained focus/draft, filtered priority view, distinct icon/native Enter, hidden success announcement and existing scroll/QR behavior.
+### Step 27 — Collapsible Connect Four beside the editor
 
-Build a separate local subpage linked compactly from CopyBlocks, keeping game code and storage independent from notes. Stage 27A implements the board, legal moves, wins/draws, restart, keyboard/touch play and CPU difficulty choices. Record wins/losses/draws, move count/history and difficulty per ruleset; allow resetting scores explicitly. Run CPU search in a worker with a time budget and cancel stale searches on restart/rule change.
+**Status:** Stage 27A complete (2026-11-13); Stages 27B–C not started. **Priority:** P2. Selected by the user; inline panel supersedes the original subpage proposal.
+
+Stage 27A: a header Connect Four button reveals a panel to the right of the submission box, reserving side space only while visible. Below 850px it stacks beneath the editor. Collapse preserves the board and pauses a pending CPU turn; reopening resumes it. Reload restores the saved round but keeps the panel collapsed. New game uses the shared words/icons preference and restarts with the selected difficulty. Changing difficulty during a round applies to the next game without resetting the current board.
+
+Implementation: original local `connect-four.js` provides standard 7×6 gravity rules, four-direction wins, full-board draws and highlighted winning pieces. Column buttons support mouse/touch, native Enter/Space and arrow/Home/End navigation; symbols distinguish players without relying on color. Human plays first. Easy/Medium/Hard use progressively deeper, time-bounded CPU search with immediate win/block detection, in a Blob worker compatible with local files. A short bounded easy-search fallback handles unavailable workers. Restart/collapse cancels stale work. Hard is a heuristic opponent, not a perfect-play solver.
+
+Moves, active difficulty and per-difficulty wins/losses/draws persist under a separate game key. Saved moves are replay-validated; invalid data recovers to a new game, storage failures are visible, finished games do not increment scores on reload. Scores/history are in a collapsed disclosure; resetting scores requires confirmation. Note drafts, saved notes and backup format remain independent. No external dependencies, video or wake-lock behavior added.
+
+Future keep-awake integration is postponed with Step 28. If explicitly resumed, reuse its mechanism during play through an explicit toggle; verify actual idle behavior rather than relying on game animation. Gameplay and scoring work independently.
+
+Validation: all **490 browser assertions** and actual downloaded JSON verification passed. Added direction/edge/gravity/draw fixtures, CPU immediate win/block checks at all levels, live CPU victory, worker fallback, desktop and 320px placement, collapse/resume, restart cancellation, score reset/cancellation, replay persistence, invalid storage, storage failure, icon mode, keyboard navigation and note/draft isolation. Physical touchscreen and screen-reader usability remain manual checks.
 
 Stage 27B adds the requested “checkered columns disappear” variant. Before implementing it, clarify whether this means alternating columns, a checker-pattern of pieces, or periodic removal; define timing, gravity after removal, simultaneous wins and repetition/draw rules. Show the active rules and upcoming removal clearly. Keep statistics separate from standard play.
 
@@ -385,7 +405,21 @@ Stage 27C adds position analysis for the selected ruleset: distinguish proven wi
 
 Optional variety proposal: a seeded “shifting board” mode announces a randomly selected column removal one turn ahead, with deterministic replay of the seed. This changes the planning problem and adds uncertainty; do not claim it makes the game mathematically unsolvable. Prototype and compare fairness, pacing and CPU handling before adopting it. Confirm whether the user wants randomness or a fully deterministic variant. Validate rules with hand-checked positions and independent win-detection tests before expanding AI strength.
 
+### Step 28 — Keep awake toggle
+
+**Status:** Postponed (2026-11-13), at user request. **Priority:** P2. Do not implement until explicitly resumed; retain the scope below for later.
+
+Add one compact Keep awake toggle with word/icon presentation and a clear active state. Default off; start only on explicit activation, stop on toggle-off/page exit, and never change note or backup data. User request: an embedded video that is automatically muted and loops. Use a tiny bundled, original or freely licensed local video with `muted`, `loop` and `playsinline`; handle rejected playback without disrupting the app. No external video service, runtime download or proprietary dependency.
+
+Recommended implementation: request the native Screen Wake Lock API when available, with the requested looping video as a best-effort fallback. Distinguish an acquired wake lock from fallback video playback; never claim that playback guarantees the device stays awake. Feature-detect support and context restrictions, handle rejection/release, and reacquire when the page becomes visible only if the user still has Keep awake enabled. Stop fallback playback when unnecessary or disabled. Keep status concise and expose unsupported/blocked states accessibly. This feature targets keeping the visible screen awake, not bypassing OS policy or guaranteeing background execution.
+
+Acceptance: test on/off, acquired/released/rejected locks, visibility changes, playback rejection, no audio, looping, resource cleanup, keyboard access, word/icon state, offline use and unchanged notes. Physically verify idle-screen behavior in the intended regular and integrated browsers before claiming fallback effectiveness. References: [Screen Wake Lock API](https://developer.mozilla.org/en-US/docs/Web/API/Screen_Wake_Lock_API) and [muted autoplay behavior](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Autoplay).
+
+Review order: review completed Stage 27A; select the optional game variants/analysis only when wanted. Step 28 is postponed and Steps 4–6 are discontinued. When resumed, Connect Four may expose the same Keep awake toggle and reuse its implementation; an effective game-integrated solution is acceptable instead of a separate video-only experience. Game animation or CPU activity alone must not be treated as proof that sleep is prevented. Keep the capability usable without starting a game, and release it on game exit when the game owns the request. Test shared ownership so leaving the game does not release a separately enabled note-page wake lock.
+
 ## Verification
+
+Reorder refinement (2026-11-13): Step 16 now restores the scroll position captured at release after rebuilding/restoring the grid and returning focus. Intentional edge scrolling during a drag is retained. Regression coverage includes native scrolled drops, failed persistence and same-position release. All **454 browser assertions** and actual downloaded JSON verification passed.
 
 Latest refinements (2026-11-12): active Priority uses animated gold lettering or a filled star, with a static gold appearance under reduced-motion preferences. Both block and editor Cancel actions preserve page scroll and return keyboard focus to the note's Edit control without scrolling (or Add when the note is filtered out). All 406 browser assertions and downloaded JSON verification pass, including top/scrolled cancellation and reduced-motion checks.
 
