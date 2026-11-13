@@ -9,9 +9,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const add = $('#add-button');
     const filter = $('#tag-filter');
     let activeFilter = '';
-    let searchQuery = '';
+
     let priorityView = false;
-    let searchReturnFocus = null;
+
     const compactFilters = window.matchMedia('(max-width: 640px)');
     let blocks = [];
     let editing = null;
@@ -22,7 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let dragging = null;
     let iconMode = false;
     const openQR = new WeakSet();
-    const pinnedQR = new WeakSet();
     const qrViews = new WeakMap();
     const chipTargets = new WeakMap();
     const notify = message => { $('#status').textContent = message; };
@@ -81,8 +80,28 @@ document.addEventListener('DOMContentLoaded', () => {
             (b.title !== undefined && typeof b.title !== 'string') ||
             (b.color !== undefined && typeof b.color !== 'string') ||
             (b.tags !== undefined && (!Array.isArray(b.tags) || b.tags.some(tag => typeof tag !== 'string'))))) throw new Error('Invalid backup');
-        return data.map(b => ({ title: b.title || 'Untitled', text: b.text, tags: normalizeTags(b.tags || []),
-            color: opaqueHex(b.color, '#F8F8F8') }));
+        return data.map(b => {
+            const block = { title: b.title || 'Untitled', text: b.text, tags: normalizeTags(b.tags || []), color: opaqueHex(b.color, '#F8F8F8') };
+            if (b.codePin !== undefined) {
+                const pin = b.codePin;
+                if (!pin || typeof pin !== 'object' || Array.isArray(pin) || !['qr', 'barcode'].includes(pin.format) ||
+                    !(pin.payload === null || typeof pin.payload === 'string' && /^https?:\/\//i.test(pin.payload))) throw new Error('Invalid pinned code settings');
+                if (pin.payload !== null) { const url = new URL(pin.payload); if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Invalid pin URL'); }
+                block.codePin = resolvedPin(block, pin);
+            }
+            return block;
+        });
+    }
+    function resolvedPin(block, pin) {
+        const urls = linksIn(block.text);
+        return { format: pin.format, payload: pin.payload === null || urls.includes(pin.payload) ? pin.payload : urls[0] || null };
+    }
+    function persistPin(block, pin) {
+        if (storageBlocked) { notify('Saved data could not be read. Recover it before saving pins.'); return false; }
+        const updated = { ...block }; if (pin) updated.codePin = pin; else delete updated.codePin;
+        if (!write('textBlocks', JSON.stringify(blocks.map(value => value === block ? updated : value)))) return false;
+        if (pin) block.codePin = pin; else delete block.codePin;
+        return true;
     }
     function save() {
         if (storageBlocked) { notify('Existing saved data could not be read. Export this session or import a valid backup before replacing it.'); return; }
@@ -106,6 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
         card.querySelector('.copy-overlay')?.remove();
     }
     async function copy(value, card) {
+        $('#copy-status').textContent = '';
         const request = {}; copyRequests.set(card, request); clearCopyFeedback(card);
         try {
             if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(value);
@@ -122,7 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
             overlay.textContent = 'Copied!'; overlay.setAttribute('aria-hidden', 'true');
             card.append(overlay);
             copyTimers.set(card, setTimeout(() => clearCopyFeedback(card), 1500));
-            notify('Copied!');
+            notify(''); $('#copy-status').textContent = 'Copied!';
         } catch {
             if (!card.isConnected || copyRequests.get(card) !== request) return;
             clearCopyFeedback(card);
@@ -136,12 +156,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const actionPaths = {
         Priority: 'm12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z',
         Copy: 'M8 8h12v12H8z M16 8V4H4v12h4',
+        Duplicate: 'M4 3h10v4 M3 4v13h4 M8 8h13v13H8z M11 14h7 M14.5 11v7',
         Edit: 'm4 16 12-12 4 4-12 12H4z M13 7l4 4',
         Delete: 'M3 6h18 M9 6V3h6v3 M6 6l1 15h10l1-15 M10 10v7 M14 10v7',
         Save: 'M4 3h13l4 4v14H3V3z M7 3v6h10V3 M7 21v-8h10v8',
         Cancel: 'm5 5 14 14 M19 5 5 19',
-        'Show QR': 'M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M15 13v8 M12 16h9 M18 19h3',
-        'Hide QR': 'M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M14 17h8'
+        'Show QR/Barcode': 'M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M15 13v8 M12 16h9 M18 19h3',
+        'Hide QR/Barcode': 'M3 3h6v6H3z M15 3h6v6h-6z M3 15h6v6H3z M14 17h8'
     };
     function presentAction(control, label = control.dataset.label) {
         control.dataset.label = label;
@@ -156,6 +177,11 @@ document.addEventListener('DOMContentLoaded', () => {
             svg.setAttribute('focusable', 'false');
             const path = document.createElementNS(svg.namespaceURI, 'path'); path.setAttribute('d', actionPaths[label]);
             svg.append(path); control.append(svg);
+            if (label.endsWith('QR/Barcode')) {
+                svg.setAttribute('viewBox', '0 0 54 24'); svg.classList.add('combined-code-icon');
+                const bars = document.createElementNS(svg.namespaceURI, 'path');
+                bars.setAttribute('d', 'M30 3 25 21 M35 4v16 M39 4v16 M42 4v16 M47 4v16 M51 4v16'); svg.append(bars);
+            }
         } else control.textContent = label;
     }
     function actionButton(label, action) {
@@ -233,6 +259,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     function qrView(block) {
         const cached = qrViews.get(block);
+        const columnWidth = parseFloat(getComputedStyle(list).gridTemplateColumns) || list.clientWidth;
+        const maxBarcodeWidth = Math.max(0, columnWidth - 28);
         if (cached && cached.text === block.text && cached.title === block.title) return cached.element;
         const element = document.createElement('div'); element.className = 'qr-view';
         element.setAttribute('role', 'region'); element.setAttribute('aria-label', `QR codes for ${block.title}`);
@@ -240,13 +268,20 @@ document.addEventListener('DOMContentLoaded', () => {
         element.addEventListener('pointerdown', event => event.stopPropagation());
         const controls = document.createElement('div'); controls.className = 'qr-controls';
         const selector = document.createElement('select'); selector.setAttribute('aria-label', `QR content for ${block.title}`);
+        const format = document.createElement('select'); format.className = 'code-format'; format.setAttribute('aria-label', 'Code format');
+        for (const [value, label] of [['qr', 'QR'], ['barcode', 'Code 128']]) {
+            const option = document.createElement('option'); option.value = value; option.textContent = label; format.append(option);
+        }
+        format.value = block.codePin?.format || cached?.format || 'qr';
         const urls = linksIn(block.text);
         ['Full text QR', ...urls.map((_, i) => urls.length > 1 ? `Link ${i + 1}` : 'Link')].forEach((label, i) => {
             const option = document.createElement('option'); option.value = i; option.textContent = label; selector.append(option);
         });
         selector.value = urls.length ? '1' : '0';
+        if (block.codePin) selector.value = block.codePin.payload === null ? '0' : String(urls.indexOf(block.codePin.payload) + 1);
+        else if (cached?.payload === null || urls.includes(cached?.payload)) selector.value = cached.payload === null ? '0' : String(urls.indexOf(cached.payload) + 1);
         const pin = button('', () => {
-            if (pinnedQR.has(block)) pinnedQR.delete(block); else pinnedQR.add(block);
+            if (!persistPin(block, block.codePin ? null : { format: format.value, payload: Number(selector.value) ? urls[Number(selector.value) - 1] : null })) return;
             updatePin();
         }); pin.className = 'qr-pin';
         const pinSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -255,23 +290,25 @@ document.addEventListener('DOMContentLoaded', () => {
         pinPath.setAttribute('d', 'M8 3h8 M9 3v7l-3 4h12l-3-4V3 M12 14v7');
         pinSvg.append(pinPath); pin.append(pinSvg);
         function updatePin() {
-            pin.setAttribute('aria-pressed', String(pinnedQR.has(block)));
-            pin.setAttribute('aria-label', pinnedQR.has(block) ? 'Unpin QR' : 'Pin QR');
-            pin.title = pinnedQR.has(block) ? 'Unpin QR to allow outside-click and Escape dismissal' : 'Pin QR open';
+            pin.setAttribute('aria-pressed', String(!!block.codePin));
+            pin.setAttribute('aria-label', block.codePin ? 'Unpin QR' : 'Pin QR');
+            pin.title = block.codePin ? 'Unpin QR to stop reopening after reload' : 'Pin QR open across reloads';
         }
         updatePin();
         const close = button('×', () => closeQR(block)); close.className = 'qr-close';
         close.setAttribute('aria-label', 'Close QR'); close.title = 'Close QR';
         controls.append(pin, selector, close);
         const content = document.createElement('div'); content.className = 'qr-content';
-        element.append(controls, content);
+        element.append(controls, format, content);
         function showCode() {
             content.replaceChildren();
             const index = Number(selector.value);
+            const width = element.isConnected ? element.clientWidth - 24 : maxBarcodeWidth;
+            const currentState = qrViews.get(block); if (currentState) currentState.width = width;
             try {
                 const payload = index ? urls[index - 1] : block.text;
-                const canvas = window.CopyBlocksQR.createCanvas(payload, block.title);
-                if (index) canvas.setAttribute('aria-label', `${selector.selectedOptions[0].textContent} QR for ${block.title}: ${urls[index - 1]}`);
+                const canvas = format.value === 'barcode' ? window.CopyBlocksBarcode.createCanvas(payload, block.title, width) : window.CopyBlocksQR.createCanvas(payload, block.title);
+                if (index) canvas.setAttribute('aria-label', `${selector.selectedOptions[0].textContent} ${format.value} for ${block.title}: ${urls[index - 1]}`);
                 const copyCode = button('', () => copy(payload, element.closest('.text-block')));
                 copyCode.className = 'qr-copy'; copyCode.setAttribute('aria-label', `Copy ${selector.selectedOptions[0].textContent} content`);
                 copyCode.title = 'Copy the text represented by this QR code'; copyCode.append(canvas);
@@ -279,23 +316,34 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (error) {
                 const message = document.createElement('p'); message.className = 'qr-error'; message.setAttribute('role', 'status');
                 message.textContent = error.message || 'Could not generate this QR code. Copying still works.'; content.append(message);
+                if (format.value === 'barcode') content.append(button('Use QR', () => { format.value = 'qr'; format.dispatchEvent(new Event('change')); }));
             }
         }
-        selector.addEventListener('change', showCode); showCode();
-        qrViews.set(block, { text: block.text, title: block.title, element });
+        function changeCode() {
+            if (block.codePin && !persistPin(block, { format: format.value, payload: Number(selector.value) ? urls[Number(selector.value) - 1] : null })) {
+                selector.value = block.codePin.payload === null ? '0' : String(urls.indexOf(block.codePin.payload) + 1); format.value = block.codePin.format; return;
+            }
+            selector.options[0].textContent = format.value === 'qr' ? 'Full text QR' : 'Full text barcode';
+            const state = qrViews.get(block); if (state) { state.format = format.value; state.payload = Number(selector.value) ? urls[Number(selector.value) - 1] : null; }
+            showCode();
+        }
+        selector.addEventListener('change', changeCode); format.addEventListener('change', changeCode);
+        selector.options[0].textContent = format.value === 'qr' ? 'Full text QR' : 'Full text barcode'; showCode();
+        qrViews.set(block, { text: block.text, title: block.title, element, width: maxBarcodeWidth, format: format.value, payload: Number(selector.value) ? urls[Number(selector.value) - 1] : null, refresh: showCode });
         return element;
     }
     function closeQR(block, focus = true) {
+        if (block.codePin && !persistPin(block, null)) return;
         const view = qrViews.get(block)?.element;
         const opener = view?.closest('.text-block')?.querySelector('.block-code-actions button');
-        openQR.delete(block); pinnedQR.delete(block); qrViews.delete(block); view?.remove();
-        if (opener) { presentAction(opener, 'Show QR'); opener.setAttribute('aria-expanded', 'false'); if (focus) opener.focus({ preventScroll: true }); }
+        openQR.delete(block); qrViews.delete(block); view?.remove();
+        if (opener) { presentAction(opener, 'Show QR/Barcode'); opener.setAttribute('aria-expanded', 'false'); if (focus) opener.focus({ preventScroll: true }); }
     }
     let qrOutside = [];
     document.addEventListener('pointerdown', event => {
         qrOutside = event.isPrimary && event.button === 0 ? blocks.filter(block => {
             const view = qrViews.get(block)?.element;
-            return !pinnedQR.has(block) && view?.isConnected && !view.contains(event.target);
+            return !block.codePin && view?.isConnected && !view.contains(event.target);
         }) : [];
         if (qrOutside.length && !event.target.closest('.qr-view')) {
             event.preventDefault(); event.stopPropagation();
@@ -309,7 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }, true);
     document.addEventListener('keydown', event => {
         if (event.key !== 'Escape' || $('#backups-dialog').open) return;
-        const open = blocks.filter(block => !pinnedQR.has(block) && qrViews.get(block)?.element.isConnected);
+        const open = blocks.filter(block => !block.codePin && qrViews.get(block)?.element.isConnected);
         if (open.length) { event.preventDefault(); open.forEach(block => closeQR(block)); }
     });
     function renderTagFilters() {
@@ -323,9 +371,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const ordered = [...counts.values()].sort((a, b) => b.count - a.count || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
         if (activeFilter && !counts.has(activeFilter.slice(4))) activeFilter = '';
         filter.dataset.activeTag = activeFilter;
-        const limit = compactFilters.matches ? 3 : 5;
-        const top = ordered.slice(0, limit);
-        const remainder = ordered.slice(limit);
         function tagButton(tag) {
             const value = 'tag:' + tag.key;
             const control = button('', () => {
@@ -342,24 +387,38 @@ document.addEventListener('DOMContentLoaded', () => {
             control.append(label, count);
             return control;
         }
-        $('#popular-tags').replaceChildren(...top.map(tagButton));
+        const popular = $('#popular-tags');
+        popular.replaceChildren(...ordered.map(tagButton));
+        $('#all-tags').textContent = `All (${blocks.length})`;
+        const rowWidth = filter.clientWidth;
+        const allWidth = $('#all-tags').getBoundingClientRect().width;
+        const candidates = [...popular.children].map((control, i) => ({ control, tag: ordered[i], width: control.getBoundingClientRect().width }));
+        function fitting(extraWidth) {
+            let used = 0;
+            return candidates.filter(candidate => {
+                if (used + candidate.width > Math.max(0, rowWidth - allWidth - extraWidth - 12)) return false;
+                used += candidate.width + 6; return true;
+            });
+        }
+        let visible = fitting(0);
         const extra = counts.get(activeFilter.slice(4));
+        if (extra && !visible.some(candidate => candidate.tag === extra)) {
+            const activeWidth = candidates.find(candidate => candidate.tag === extra)?.width || 0;
+            visible = fitting(activeWidth + 6);
+        }
+        const top = visible.map(candidate => candidate.tag);
+        candidates.forEach(candidate => { if (!visible.includes(candidate)) candidate.control.remove(); });
         $('#active-tag').replaceChildren(...(extra && !top.includes(extra) ? [tagButton(extra)] : []));
         $('#all-tags').setAttribute('aria-pressed', String(!activeFilter));
         $('#all-tags').textContent = `All (${blocks.length})`;
         const details = $('#more-tags');
-        details.hidden = !remainder.length;
+        details.hidden = !ordered.length;
         if (details.hidden) {
             if (details.contains(document.activeElement)) $('#all-tags').focus({ preventScroll: true });
             details.open = false;
         }
-        $('#more-tags-label').textContent = `More tags (${remainder.length})`;
-        const search = $('#tag-search');
-        if (details.hidden) search.value = '';
-        const query = search.value.trim().toLowerCase();
-        const visible = (query ? ordered : remainder).filter(tag => tag.key.includes(query));
-        $('#more-tag-list').replaceChildren(...visible.map(tagButton));
-        $('#tag-search-empty').hidden = !!visible.length;
+        $('#more-tags-label').textContent = `Show all tags (${ordered.length})`;
+        $('#more-tag-list').replaceChildren(...ordered.map(tagButton));
         if (focusedKey !== undefined) {
             const replacement = [...filter.querySelectorAll('[data-tag-filter]')].find(control =>
                 control.dataset.tagFilter === focusedKey && (!control.closest('details') || details.open));
@@ -369,6 +428,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const announceMove = message => { $('#reorder-status').textContent = message; };
     function endMove(commit = false, focus = true) {
         if (!dragging) return;
+        const x = window.scrollX, y = window.scrollY;
         const move = dragging; dragging = null;
         cancelAnimationFrame(move.frame);
         if (move.handle.hasPointerCapture(move.pointerId)) move.handle.releasePointerCapture(move.pointerId);
@@ -377,7 +437,7 @@ document.addEventListener('DOMContentLoaded', () => {
         move.placeholder.replaceWith(move.card);
         move.handle.setAttribute('aria-pressed', 'false');
         let saved = false;
-        if (commit && move.position !== move.from && !editing && !activeFilter && !searchQuery && !priorityView) {
+        if (commit && move.position !== move.from && !editing && !activeFilter && !priorityView) {
             const reordered = blocks.filter(block => block !== move.block);
             reordered.splice(move.position, 0, move.block);
             if (write('textBlocks', JSON.stringify(reordered))) { blocks = reordered; saved = true; }
@@ -390,6 +450,9 @@ document.addEventListener('DOMContentLoaded', () => {
             list.insertBefore(move.card, siblings[move.from] || null);
         }
         if (focus) list.querySelector(`[data-index="${blocks.indexOf(move.block)}"] .drag-handle`)?.focus({ preventScroll: true });
+        // Rebuilding the grid can temporarily shrink the page and clamp its scroll.
+        // Preserve the release position, including any intentional drag-edge scrolling.
+        window.scrollTo(x, y);
     }
     function placeMove(position) {
         if (!dragging) return;
@@ -433,7 +496,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return true;
     }
     function startMove(block, card, handle, event) {
-        if (editing || activeFilter || searchQuery || priorityView || blocks.length < 2 || dragging) return;
+        if (editing || activeFilter || priorityView || blocks.length < 2 || dragging) return;
         const rect = card.getBoundingClientRect();
         const placeholder = document.createElement('div'); placeholder.className = 'drop-placeholder';
         placeholder.style.height = `${rect.height}px`; placeholder.setAttribute('aria-hidden', 'true');
@@ -504,17 +567,23 @@ document.addEventListener('DOMContentLoaded', () => {
         let restoredChip = null;
         const blockLinks = new Map(blocks.map(block => [block, linksIn(block.text)]));
         renderTagFilters();
-        const matchesFilter = block => (!activeFilter || tags(block).includes(activeFilter.slice(4))) &&
-            (!searchQuery || [block.title, block.text, ...block.tags].some(value => value.toLowerCase().includes(searchQuery)));
+        const matchesFilter = block => !activeFilter || tags(block).includes(activeFilter.slice(4));
         const matchingCount = blocks.filter(matchesFilter).length;
         const editingException = editing && !matchesFilter(editing);
         const displayBlocks = blocks.map((block, index) => ({ block, index }));
         if (priorityView) displayBlocks.sort((a, b) => priorityOf(a.block) - priorityOf(b.block) || a.index - b.index);
-        const editIndex = displayBlocks.findIndex(entry => entry.block === editing);
-        if (editIndex >= 0) displayBlocks.unshift(...displayBlocks.splice(editIndex, 1));
         list.replaceChildren();
+        const visibleBlocks = displayBlocks.filter(({ block }) => block === editing || matchesFilter(block));
+        const hasPriority = priorityView && visibleBlocks.some(({ block }) => priorityOf(block) < Infinity);
+        let divided = false;
         displayBlocks.forEach(({ block, index }) => {
             if (block !== editing && !matchesFilter(block)) return;
+            if (hasPriority && !divided && priorityOf(block) === Infinity) {
+                const separator = document.createElement('div'); separator.className = 'priority-separator';
+                separator.setAttribute('role', 'separator'); separator.setAttribute('aria-label', 'Other notes');
+                separator.textContent = 'Other notes'; list.append(separator); divided = true;
+            }
+            if (block.codePin) openQR.add(block);
             const card = document.createElement('article'); card.className = 'text-block';
             card.style.backgroundColor = block.color; card.draggable = false;
             card.style.color = foregroundFor(block.color);
@@ -535,11 +604,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const handle = button('⠿ Reorder', () => {}); handle.className = 'drag-handle';
             handle.setAttribute('aria-label', `Reorder ${block.title}`);
             handle.setAttribute('aria-describedby', 'reorder-help'); handle.setAttribute('aria-pressed', 'false');
-            handle.disabled = !!editing || !!activeFilter || !!searchQuery || priorityView || blocks.length < 2;
-            handle.title = priorityView ? 'Switch off Priority to arrange notes.' : editing ? 'Finish editing before reordering.' : activeFilter || searchQuery ? 'Clear search and tag filters to reorder.' : 'Drag to reorder, or use Space and arrow keys.';
+            handle.disabled = !!editing || !!activeFilter || priorityView || blocks.length < 2;
+            handle.title = priorityView ? 'Switch off Priority to arrange notes.' : editing ? 'Finish editing before reordering.' : activeFilter ? 'Clear the tag filter to reorder.' : 'Drag to reorder, or use Space and arrow keys.';
             wireHandle(block, card, handle);
             footer.append(codeActions, handle);
-            actions.append(actionButton('Copy', () => copy(block.text, card)), actionButton(block === editing ? 'Save' : 'Edit', () => {
+            actions.append(actionButton(block === editing ? 'Duplicate' : 'Copy', () => {
+                if (block === editing) duplicateDraft(); else copy(block.text, card);
+            }), actionButton(block === editing ? 'Save' : 'Edit', () => {
                 if (block === editing) { add.click(); if (!editing) text.focus({ preventScroll: true }); return; }
                 if (!editing) creatorColor = selectedColor;
                 editing = block; title.value = block.title; text.value = block.text; chooseColor(block.color);
@@ -591,14 +662,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 card.append(links);
             }
             card.append(footer);
-            const qrButton = actionButton(openQR.has(block) ? 'Hide QR' : 'Show QR', () => {
+            const qrButton = actionButton(openQR.has(block) ? 'Hide QR/Barcode' : 'Show QR/Barcode', () => {
                 if (openQR.has(block)) {
                     closeQR(block);
                 } else {
                     openQR.add(block); card.insertBefore(qrView(block), footer);
                     card.querySelector('.qr-view select').focus({ preventScroll: true });
                 }
-                presentAction(qrButton, openQR.has(block) ? 'Hide QR' : 'Show QR');
+                presentAction(qrButton, openQR.has(block) ? 'Hide QR/Barcode' : 'Show QR/Barcode');
                 qrButton.setAttribute('aria-expanded', String(openQR.has(block)));
             });
             qrButton.setAttribute('aria-expanded', String(openQR.has(block)));
@@ -609,16 +680,41 @@ document.addEventListener('DOMContentLoaded', () => {
             list.append(card);
         });
         $('#empty-state').hidden = list.children.length > 0;
-        $('#empty-state').textContent = searchQuery || activeFilter ? 'No notes match. Try another search or clear the filters.' : 'No blocks to show. Add a text block above.';
+        $('#empty-state').textContent = activeFilter ? 'No notes match. Clear the tag filter.' : 'No blocks to show. Add a text block above.';
         $('#block-count').textContent = `${matchingCount} of ${blocks.length} blocks${editingException ? ' match the filter (+1 editing block)' : ''}`;
         if (focusedChip) (restoredChip || $('#all-tags')).focus({ preventScroll: true });
     }
+    function draftValue() {
+        if (!noteColorControl.valid()) return null;
+        if (!text.value.trim()) { notify('Enter some text first.'); text.focus({ preventScroll: true }); return null; }
+        return { title: title.value.trim() || 'Untitled', text: text.value, tags: normalizeTags([tagInput.value]), color: selectedColor };
+    }
+    function duplicateDraft() {
+        if (!editing) return;
+        const value = draftValue(); if (!value) return;
+        if (storageBlocked) { notify('Saved data could not be read. Recover it before duplicating notes.'); return; }
+        const source = editing, x = scrollX, y = scrollY;
+        const next = [...blocks]; next.splice(blocks.indexOf(source) + 1, 0, value);
+        if (!write('textBlocks', JSON.stringify(next))) return;
+        blocks = next; render();
+        list.querySelector(`[data-index="${blocks.indexOf(source)}"] [data-label="Duplicate"]`)?.focus({ preventScroll: true });
+        window.scrollTo(x, y); notify('Draft duplicated. Original note is still being edited.');
+    }
     add.addEventListener('click', () => {
-        if (!noteColorControl.valid()) return;
-        if (!text.value.trim()) { notify('Enter some text first.'); text.focus(); return; }
-        const value = { title: title.value.trim() || 'Untitled', text: text.value, tags: normalizeTags([tagInput.value]), color: selectedColor };
+        const value = draftValue(); if (!value) return;
+        const x = scrollX, y = scrollY;
+        let changedPin = false;
+        if (editing?.codePin) {
+            value.codePin = resolvedPin(value, editing.codePin);
+            changedPin = value.codePin.payload !== editing.codePin.payload;
+        }
+        if (storageBlocked) { notify('Saved data could not be read. Recover it before saving notes.'); return; }
+        const next = editing ? blocks.map(block => block === editing ? value : block) : [...blocks, value];
+        if (!write('textBlocks', JSON.stringify(next))) return;
         if (editing) Object.assign(editing, value); else blocks.push(value);
-        resetEditor(); save(); render();
+        resetEditor(); render();
+        if (changedPin) notify('Pinned link was removed. The code now uses the first remaining link or full text.');
+        window.scrollTo(x, y);
     });
     $('#cancel-edit').addEventListener('click', () => {
         const block = editing, x = window.scrollX, y = window.scrollY;
@@ -628,41 +724,42 @@ document.addEventListener('DOMContentLoaded', () => {
         window.scrollTo(x, y);
     });
     text.addEventListener('input', updateDetectedLinks);
-    const searchInput = $('#note-search');
-    function openSearch() {
-        if (document.querySelector('dialog[open]')) return false;
-        if ($('#note-search-panel').hidden) searchReturnFocus = document.activeElement;
-        endMove(false, false);
-        $('#note-search-panel').hidden = false; $('#search-button').setAttribute('aria-expanded', 'true');
-        searchInput.focus(); searchInput.select(); return document.activeElement === searchInput;
-    }
-    function closeSearch() {
-        searchQuery = ''; searchInput.value = ''; $('#note-search-panel').hidden = true;
-        $('#search-button').setAttribute('aria-expanded', 'false'); render();
-        (searchReturnFocus?.isConnected ? searchReturnFocus : $('#search-button')).focus({ preventScroll: true });
-        searchReturnFocus = null;
-    }
-    $('#search-button').addEventListener('click', openSearch);
-    $('#close-search').addEventListener('click', closeSearch);
-    searchInput.addEventListener('input', () => { searchQuery = searchInput.value.trim().toLowerCase(); render(); });
-    document.addEventListener('keydown', event => {
-        if (document.querySelector('dialog[open]')) return;
-        if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f') {
-            if (!$('#note-search-panel').hidden && document.activeElement === searchInput) return;
-            if (openSearch()) event.preventDefault();
-        } else if (event.key === 'Escape' && !$('#note-search-panel').hidden && !event.target.closest('.qr-view')) {
-            event.preventDefault(); closeSearch();
-        }
-    });
     $('#all-tags').addEventListener('click', () => { activeFilter = ''; render(); });
-    $('#tag-search').addEventListener('input', renderTagFilters);
     compactFilters.addEventListener('change', render);
     noteColorControl = colorControl('note-color', '#F8F8F8', chooseColor);
     const backgroundColor = opaqueHex(read('preferredColor'), '#F0F0F0');
-    colorControl('background-color', backgroundColor, color => {
+    const backgroundControl = colorControl('background-color', backgroundColor, color => {
         document.body.style.backgroundColor = color; write('preferredColor', color);
     });
     document.body.style.backgroundColor = backgroundColor;
+    function applySurfaceColor(color) {
+        document.documentElement.style.setProperty('--surface-color', color);
+        document.documentElement.style.setProperty('--surface-text', foregroundFor(color));
+    }
+    const surfaceColor = opaqueHex(read('surfaceColor'), '#FFFFFF');
+    const surfaceControl = colorControl('surface-color', surfaceColor, color => { applySurfaceColor(color); write('surfaceColor', color); });
+    applySurfaceColor(surfaceColor);
+    const palettes = {
+        classic: ['#F0F0F0', '#FFFFFF', '#F8F8F8'],
+        coffeeblocks: ['#38281F', '#E8D8C3', '#C6A27A'],
+        midnight: ['#141B29', '#25324A', '#DCE5F2'],
+        sage: ['#D5DED2', '#F1F4EB', '#B9CCA9']
+    };
+    $('#color-preset').addEventListener('change', () => {
+        const palette = palettes[$('#color-preset').value]; if (!palette) return;
+        const [background, surface, note] = palette;
+        backgroundControl.set(background); surfaceControl.set(surface); chooseColor(note);
+        document.body.style.backgroundColor = background; applySurfaceColor(surface);
+        write('preferredColor', background); write('surfaceColor', surface);
+    });
+    for (const id of ['background-color-picker', 'background-color-hex', 'surface-color-picker', 'surface-color-hex', 'note-color-picker', 'note-color-hex']) {
+        $(`#${id}`).addEventListener('input', () => { $('#color-preset').value = ''; });
+    }
+    let tagWidth = 0;
+    new ResizeObserver(entries => {
+        const width = entries[0].contentRect.width;
+        if (Math.abs(width - tagWidth) > 1) { tagWidth = width; renderTagFilters(); }
+    }).observe(filter);
     const densitySlider = $('#density-slider');
     const savedDensity = Number(read('preferredColumns'));
     let preferredDensity = Number.isSafeInteger(savedDensity) && savedDensity >= 1 ? savedDensity : 3;
@@ -678,6 +775,12 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#density-value').textContent = effective;
         densitySlider.title = `Columns: ${effective} of ${maximum} available`;
         list.style.setProperty('--columns', effective);
+        requestAnimationFrame(() => {
+            for (const block of blocks) {
+                const view = qrViews.get(block);
+                if (view?.element.isConnected && view.format === 'barcode' && view.width !== view.element.clientWidth - 24) view.refresh();
+            }
+        });
     }
     densitySlider.addEventListener('input', () => {
         endMove(false, false);
