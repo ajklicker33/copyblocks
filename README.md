@@ -1,5 +1,7 @@
 # CopyBlocks
 
+Edit notes directly inside their blocks, with separate text and color controls.
+
 A simple, local-first clipboard for reusable text. No build, account, or internet connection required.
 
 ## Use
