@@ -5,6 +5,21 @@ body {
     background-color: #f0f0f0;
 }
 
+/* The editor is mounted in its card only while creating or editing. */
+[hidden] { display: none !important; }
+.text-block .note-editor, .new-block-card .note-editor { width: 100%; min-width: 0; box-sizing: border-box; margin: 8px 0; padding: 10px; box-shadow: none; }
+.note-editor { user-select: text; cursor: auto; }
+.note-editor h3 { margin: 0 0 8px; font-size: 1rem; }
+.note-editor .editor-fields { grid-template-columns: minmax(0, 1fr); gap: 0; }
+.new-block-card { min-width: 0; }
+#component-controls, .draft-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+#component-controls button { flex: 1; min-width: 50px; }
+#component-controls [aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: -3px; font-weight: bold; }
+.text-block.is-editing .qr-view { position: relative; left: auto; top: auto; transform: none; margin-top: 8px; max-height: none; box-shadow: none; }
+#draft-dialog { box-sizing: border-box; width: min(440px, calc(100% - 24px)); border: 1px solid #888; border-radius: 8px; padding: 18px; }
+#draft-dialog::backdrop { background: #0006; }
+.editor-workspace #connect-four { max-width: 380px; }
+
 .editor-workspace.game-visible { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); gap: 12px; max-width: 1560px; margin: 12px auto 0; align-items: start; }
 .editor-workspace.game-visible .note-editor { margin: 0; width: 100%; min-width: 0; box-sizing: border-box; }
 #connect-four { width: 100%; min-width: 0; box-sizing: border-box; }
@@ -493,3 +508,20 @@ button:disabled { cursor: default; opacity: .5; }
 .barcode-code { display: block; margin: auto; image-rendering: pixelated; }
 .icon-action svg.combined-code-icon { width: 45px; }
 .preset-help { font-size: .75rem; margin: 6px 0 10px; }
+.fill-settings { flex-basis: 100%; min-width: 0; }
+.fill-settings select { max-width: 100%; }
+.fill-color-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
+.fill-color-row button { margin-left: auto; }
+#fill-help { font-size: .75rem; margin: 6px 0; }
+#fill-preview { height: 48px; border: 1px solid currentColor; border-radius: 4px; }
+/* Stable opaque text surfaces keep every palette readable, including black-to-white. */
+.patterned-block > .block-title, .patterned-block > .text-content,
+.patterned-block > .block-links, .patterned-block > .filter-exception {
+    background: #fff; color: #111; padding: 6px; border-radius: 4px;
+}
+.patterned-block > .block-links a { color: #111; }
+.editor-workspace.game-visible { display: flex; justify-content: flex-end; }
+@media (max-width: 640px) {
+    .blocks-toolbar { flex-wrap: wrap; }
+    .blocks-toolbar > #tag-filter { flex-basis: 100%; order: 3; }
+}

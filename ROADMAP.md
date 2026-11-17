@@ -2,10 +2,19 @@
 
 Implementation priorities, stable numbered steps, and validation history. See [README.md](README.md) for usage.
 
+## Next priority — blocks-first interface rework
+
+Requested 2026-11-16. **Steps 29–31 are the P0 rework**, ahead of optional Connect Four variants/analysis and other enhancements. Step 29 is complete; **Step 30 is next**, followed by Step 31's integrated regression and visual validation. The full redesign remains incomplete until both remaining steps pass.
+
+Target experience: the saved blocks are the main workspace from first load. No permanent editor above them. A block's **Edit** button opens editing inside that same block, with separate title, body and tags text boxes saved together; color has its own immediate-save editor. A minimal banner leaves room for the grid; Columns, Priority, words/icons and appearance controls live inside the blocks section alongside tag filters. Creation starts from a compact **New block** action in that section.
+
 ## Feature priorities and decisions
 
 | Priority | Feature | Decision / next implementation |
 | --- | --- | --- |
+| P0 — complete | In-block, component-level editing | Step 29 implemented: editing inside the selected block; combined title/body/tags save that closes editing, immediate color saves, protected draft transitions and on-demand creation. |
+| P0 — next | Blocks-first layout and unified toolbar | Step 30: minimal banner, more viewport space for blocks, view controls beside filters, and on-demand creation. |
+| P0 — release gate | Rework validation | Step 31: verify the complete editing/layout flow, existing features and responsive visual usability before declaring the rework complete. |
 | P0 | Restore existing controls and persistence | Implemented; preserve the original backup shape and storage keys. |
 | P1 | Edit existing blocks | Implemented with Save Changes and Cancel Edit. |
 | P1 | Tag filtering | Implemented in Step 7: separate tag metadata, safe chips and case-insensitive filtering. Legacy body/title hashtags remain unchanged and are not inferred as tags. |
@@ -31,7 +40,7 @@ Implementation priorities, stable numbered steps, and validation history. See [R
 
 ## Executable implementation plan
 
-To start a task, prompt **"Begin work on Step X in ROADMAP.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7–22 and 24–26 are **Complete**; Step 23 is **Superseded**. Steps 4–6 are **Discontinued**. Step 27A is **Complete**; optional Stages 27B–C remain unimplemented. Step 28 is **Postponed** at user request. Review the standard Connect Four game before selecting a variant; Stage 27B requires clarification of the removal rule. Do not resume discontinued or postponed steps unless explicitly requested. New requests are scoped below; they are not implemented merely by being added to this plan.
+To start a task, prompt **"Begin work on Step X in ROADMAP.md"**. The numbered steps below are stable identifiers; do not renumber them when a step finishes. Steps 1–3, 7–22 and 24–26 are **Complete**; Step 23 is **Superseded**. Steps 4–6 are **Discontinued**. Step 27A is **Complete**; optional Stages 27B–C remain unimplemented. Step 28 is **Postponed** at user request. Step 29 is **Complete**; Steps 30–31 are the next P0 work. Review the standard Connect Four game before selecting a variant; Stage 27B requires clarification of the removal rule. Do not resume discontinued or postponed steps unless explicitly requested. New requests are scoped below; they are not implemented merely by being added to this plan.
 
 ### Instructions for the implementing agent
 
@@ -415,7 +424,47 @@ Recommended implementation: request the native Screen Wake Lock API when availab
 
 Acceptance: test on/off, acquired/released/rejected locks, visibility changes, playback rejection, no audio, looping, resource cleanup, keyboard access, word/icon state, offline use and unchanged notes. Physically verify idle-screen behavior in the intended regular and integrated browsers before claiming fallback effectiveness. References: [Screen Wake Lock API](https://developer.mozilla.org/en-US/docs/Web/API/Screen_Wake_Lock_API) and [muted autoplay behavior](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Autoplay).
 
-Review order: review completed Stage 27A; select the optional game variants/analysis only when wanted. Step 28 is postponed and Steps 4–6 are discontinued. When resumed, Connect Four may expose the same Keep awake toggle and reuse its implementation; an effective game-integrated solution is acceptable instead of a separate video-only experience. Game animation or CPU activity alone must not be treated as proof that sleep is prevented. Keep the capability usable without starting a game, and release it on game exit when the game owns the request. Test shared ownership so leaving the game does not release a separately enabled note-page wake lock.
+Review order: prioritize Steps 29–31 below. Optional game variants/analysis remain unselected. Step 28 is postponed and Steps 4–6 are discontinued. When resumed, Connect Four may expose the same Keep awake toggle and reuse its implementation; an effective game-integrated solution is acceptable instead of a separate video-only experience. Game animation or CPU activity alone must not be treated as proof that sleep is prevented. Keep the capability usable without starting a game, and release it on game exit when the game owns the request. Test shared ownership so leaving the game does not release a separately enabled note-page wake lock.
+
+### Step 29 — Edit individual components inside each block
+
+**Status:** Complete (2026-11-16). **Priority:** P0. **Dependencies:** completed Steps 7, 10, 15, 26. Refines their interface without reopening historical completion statuses.
+
+Scope (refined at user request, 2026-11-16): remove the shared top-of-page editing workflow. Edit opens inside the selected card, before its saved body so long notes do not bury the fields. Title, body and tags use separate visible text boxes. **Save text** commits all three together and concludes editing; Cancel discards the unsaved text draft. Color is a separate editing mode: selecting a color or entering a valid HEX value immediately saves only color. Done closes color editing; closing does not undo successfully saved color choices. This supersedes the original independent Save/Cancel-per-component proposal.
+
+Keep one active block draft at a time. Switching between blocks, text/color modes or creation protects unsaved changes with Save, Discard or Keep editing. Validation and persistence failures retain the draft and prevent a save-and-switch. Duplicate uses the current grouped text draft plus the saved color, creates an independent block and leaves the original edit open. Native color picker input updates storage and card appearance without replacing the picker or stealing focus. Failed color writes preserve the saved color and retain the selected value for retry; invalid HEX never persists.
+
+New block opens an on-demand unsaved draft card in the blocks section; Add saves it and Cancel removes only the draft. Reusing a note's HEX color saves immediately in active color editing, otherwise fills the creation draft or next block color. Preserve exact copied text, separate tags, backup shape/storage keys, safe rendering, offline use, filter exceptions, custom/priority order and disabled reordering while editing. Text saves refresh derived links/codes. Pinned overlays use normal flow during editing, leaving inputs accessible. Re-renders preserve focus, selection and scroll; successful text save returns focus to Edit without scrolling. Status announcements remain outside the hidden editor. The game remains in its utility panel; broader layout changes belong to Step 30.
+
+Acceptance: verify a single Save text commits title/body/tags and closes editing, Cancel discards all three, empty-body/storage errors commit none, and color input saves immediately without changing text fields. Cover dirty switches, creation cancellation, duplicate success/failure, invalid HEX, color storage failure/retry, filtered/priority views, keyboard controls, exact copy payloads, focus/caret/scroll retention and 320px overflow. Preserve coverage for existing codes, pins, backups and game behavior.
+
+Validation: **522 browser assertions** and actual downloaded JSON verification passed in the isolated Chrome runner. Focused editing tests cover grouped saves and cancellation, immediate picker/HEX persistence, native picker identity/focus retention, invalid input, storage failures/retry, protected transitions, duplicate isolation, creation, filtering/resizing and reload. Existing end-to-end coverage includes icon/native-keyboard saves, codes/pins, imports/exports, ordering, scrolling and Connect Four. Native clipboard permissions, physical touch and screen-reader usability remain manual checks; integrated visual review remains Step 31. Implementation branch: `feature/in-block-component-editing`.
+
+Block-fill refinement (2026-11-16): requested for individual blocks only. Color editing now offers Solid, Smooth gradient, Dithered and Halftone dots (windshield-style dot fade), with two to four native color pickers and a live preview. Stops run left to right; adding/removing stops and changing style or color saves immediately for existing notes. New-block fills remain drafts until Add. Patterns are deterministic local SVG/CSS with no external images or dependencies. Opaque content surfaces preserve readable text across arbitrary palettes. Page/interface Colors settings are unchanged.
+
+Persistence retains the existing `color` fallback and storage key; non-solid notes add optional `fill: { style, colors }` metadata. Import validates the style and two-to-four six-digit HEX values; old backups still work. Text saves, duplication, reload and backups preserve the fill; Solid removes it. Invalid palettes or failed writes do not replace saved data, and failed color/style changes can be retried through protected transitions. Older app versions can display the first color but will not preserve the new fill metadata when resaving.
+
+Fill validation: **551 browser assertions** and actual downloaded JSON verification passed, including a patterned note hidden by the active filter in the downloaded backup. Focused checks cover all styles, browser decoding of generated SVG, four-color limits/removal, immediate saves, picker focus, readable content surfaces, 320px controls, storage failures/retry, failed Solid recovery, import validation, reload, creation, text saves and duplicate isolation. Physical native color-dialog interaction and subjective visual review remain manual checks.
+
+### Step 30 — Minimal banner and unified blocks workspace
+
+**Status:** Not started. **Priority:** P0. **Dependency:** Step 29.
+
+Scope: make the saved-blocks section use the available page width and most of the initial viewport height. Reduce outer padding and redundant surfaces/gaps while keeping cards readable and actions accessible. Use normal document scrolling; avoid a fixed-height grid or nested scroll panes. Keep the banner to a compact CopyBlocks identity and a small utilities entry point for Backups and Connect Four. Put Clear All in a clearly labeled collection-actions disclosure within the blocks section, retaining its confirmation behavior.
+
+Inside the blocks section, group **New block**, tag filters/active filter/count, **Columns**, **Priority**, **Use icons / Use words**, and **Colors** into a compact responsive toolbar. Keep the view controls beside filters on wide screens; wrap into logical rows on narrow screens without hiding the active filter or essential actions. Appearance details can remain a disclosure. Preserve existing preferences, adaptive column limits, tag overflow behavior, contrast and reduced-motion support. Update empty-state instructions to point to New block.
+
+Decouple Connect Four from the removed editor workspace: retain its collapsed-by-default utility panel and game state, opening alongside the blocks workspace on wide screens and stacking on narrow screens. Its closed state must reserve no grid space. This is relocation only; do not implement Stages 27B–C or Step 28.
+
+Acceptance: at 1200×800 and 1920×1080 with saved notes and utilities closed, the first card row begins within the top 160px and blocks use the available width with modest gutters. At 320px and 768px, controls wrap without horizontal page overflow, clipping or inaccessible actions. Verify long titles/text/tags, dense columns, expanded component fields, appearance settings and the open game panel. Record before/after screenshots at matching sizes; confirm the default view has no top editor and no large banner. Update README usage to match the delivered behavior.
+
+### Step 31 — Validate and finish the interface rework
+
+**Status:** Not started. **Priority:** P0 — release gate. **Dependencies:** Steps 29–30.
+
+Scope: run the full regression harness in its isolated browser profile and complete integrated visual/interaction review. Preserve behavior-based checks; replace obsolete global-editor/layout assumptions rather than deleting feature coverage. Fix rework regressions before marking this step complete. Tests for individual changes belong in Steps 29–30 as well; this final step verifies their integration.
+
+Acceptance: cover create/edit/component save/cancel/duplicate, unsaved-draft transitions, filters and counts, priority ordering, drag/drop, exact clipboard payloads, color reuse/preferences, QR/barcode refresh and pinning, backup/import/export and real reload persistence. Include simulated storage/clipboard failures and actual downloaded JSON verification. Verify keyboard-only operation, visible focus, accessible labels/status, icon mode, reduced motion, mobile wrapping and game-panel isolation. Perform visual review at the Step 30 viewport sizes and verify the space targets. Record actual results and remaining manual limitations; do not inherit the previous assertion count as evidence of new validation. Mark the overall rework complete only when all three steps pass.
 
 ## Verification
 
