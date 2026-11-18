@@ -9,7 +9,7 @@ function check(condition, label) {
     output.textContent = results.join('\n');
 }
 function attach() { w = frame.contentWindow; d = w.document; w.confirm = () => true; }
-const activate = control => control.click();
+const activate = control => { for (let parent = control.parentElement; parent; parent = parent.parentElement) if (parent.matches('details')) parent.open = true; control.click(); };
 const click = selector => activate(d.querySelector(selector));
 const action = label => activate([...d.querySelectorAll('.block-actions button')].find(b => b.dataset.label === label));
 const editComponent = name => d.querySelector(`[data-component="${name === 'color' ? 'color' : 'text'}"]`).click();
@@ -72,6 +72,12 @@ frame.onload = async () => {
     try {
         await testComponents();
         await testFills();
+        await testFillSizing();
+        await testPatternQuality();
+        await testPaletteSwap();
+        await testOpacity();
+        await testWorkspace();
+        await testEditSession();
         click('#clear-button');
         check(!!d.querySelector('#density-slider') && !d.querySelector('#layout-button'), 'density slider replaces layout menu');
         setDensity(2); check(w.localStorage.getItem('preferredColumns') === '2', 'layout persists');
@@ -391,7 +397,7 @@ frame.onload = async () => {
         action('Edit'); editComponent('color');
         check(d.querySelector('#note-color-hex').value === '#000000', 'editing loads stored note color');
         setColorField('#note-color-hex', '#ffffff'); click('#cancel-edit');
-        check(stored()[0].color === '#FFFFFF' && d.querySelector('#note-color-hex').value === '#ABCDEF', 'closing color keeps auto-saved selection and restores creator color');
+        check(stored()[0].color === '#000000' && d.querySelector('#note-color-hex').value === '#ABCDEF', 'Cancel restores original note color and creator color');
         action('Edit'); editComponent('color'); setColorField('#note-color-hex', '#FF0000'); click('#done-edit');
         check(stored()[0].color === '#FF0000' && d.querySelector('.note-color-value').textContent === '#FF0000', 'edit saves changed color and refreshes label');
         setColorField('#background-color-hex', '#102030');
@@ -548,7 +554,7 @@ frame.onload = async () => {
         check(tagCount('zeta') === countBeforeDraft && !tagCount('draft-only'), 'unsaved drafts do not affect tag statistics');
         frame.style.width = '320px';
         await new Promise(resolve => setTimeout(resolve, 60));
-        check(d.querySelector('#active-tag button')?.dataset.tagFilter === 'tag:zeta', 'active tag remains visible when responsive limit shrinks');
+        check(!!d.querySelector('.tag-filter-row [data-tag-filter="tag:zeta"][aria-pressed="true"]'), 'active tag remains visible when responsive limit shrinks');
         check(d.documentElement.scrollWidth <= w.innerWidth, 'collapsible tag strip fits 320px');
         filterBy('');
         const popular = d.querySelector('#popular-tags button'); popular.focus(); await pressChipKey('Enter');
@@ -1187,7 +1193,7 @@ frame.onload = async () => {
             check(engine.choose(engine.replay([6, 0, 6, 1, 5, 2, 5]), level) === 3, `CPU ${level} takes immediate win`);
             check(engine.choose(engine.replay([0, 6, 1, 6, 2]), level) === 3, `CPU ${level} blocks immediate loss`);
         }
-        check(d.querySelector('#connect-four').hidden && !d.querySelector('.editor-workspace').classList.contains('game-visible'), 'game starts collapsed without reserving side space');
+        check(d.querySelector('#connect-four').hidden && !d.querySelector('.blocks-workspace').classList.contains('game-visible'), 'game starts collapsed without reserving side space');
         frame.style.width = '1200px'; click('#connect-four-toggle');
         await new Promise(resolve => setTimeout(resolve, 40));
         const gameRect = d.querySelector('#connect-four').getBoundingClientRect();

@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Step 32 — measured fill review</title>
+<style>
+body { font:16px Arial; margin:24px; background:#eee; color:#222; }
+h1 { font-size:24px; } h2 { font-size:18px; }
+.pair { display:flex; gap:32px; align-items:start; margin-bottom:24px; }
+.sample { border:1px solid #888; background:#000; }
+p { margin:8px 0; }
+</style>
+<h1>Step 32: actual-size vector rendering</h1>
+<p>Left: reconstructed previous fixed-square geometry stretched to the block. Right: measured CSS-pixel geometry.</p>
+<p>Dots keep their 8px grid; dithering uses a consistent 2px grid. Texture design improvements remain Step 33.</p>
+<script src="fixtures/step32-block-fills.js"></script>
+<script>
+const BlockFills = window.Step32Fills;
+const fill = {style:'dots', direction:'diagonal-down', colors:['#172B4D','#DFE9F4']};
+for (const [name,width,height,style] of [['Wide dots',640,160,'dots'],['Tall dots',200,400,'dots'],['Square dots',280,280,'dots'],['Wide dither',640,160,'dithered'],['Tall dither',200,400,'dithered']]) {
+    fill.style=style;
+    const heading = document.createElement('h2'); heading.textContent = `${name}: ${width} × ${height}`; document.body.append(heading);
+    const pair = document.createElement('div'); pair.className='pair'; document.body.append(pair);
+    for (const measured of [false,true]) {
+        const column=document.createElement('div'), label=document.createElement('p'), sample=document.createElement('div');
+        label.textContent=measured?'Actual-size render':'Stretched reference'; sample.className='sample';
+        sample.style.width=width+'px'; sample.style.height=height+'px'; column.append(label,sample); pair.append(column);
+        if (measured) BlockFills.apply(sample,fill);
+        else {
+            // The former diagonal dither used a 4px cell in a 256px square (64 cells).
+            const referenceSize=style==='dots'?256:128;
+            const reference=decodeURIComponent(BlockFills.background(fill,referenceSize,referenceSize).slice(5,-2).split(',')[1]).replace('<svg ', '<svg preserveAspectRatio="none" ');
+            sample.style.backgroundImage=`url("data:image/svg+xml,${encodeURIComponent(reference)}")`; sample.style.backgroundSize='100% 100%';
+        }
+    }
+}
+</script>

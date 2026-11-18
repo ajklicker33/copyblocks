@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Step 33 pattern review</title>
+<style>
+body { font:16px Arial; background:#eee; color:#172b4d; margin:24px; }
+h1 {font-size:24px} h2 {font-size:18px; margin:20px 0 8px}
+.pair {display:flex;gap:24px;align-items:start}.sample {border:1px solid #789;background:#172b4d}
+p {margin:6px 0} .zoom {zoom:2}
+</style>
+<h1>Step 33: pattern quality</h1>
+<p>Left: Step 32 renderer. Right: current renderer (ordered dither restored; improved staggered halftone retained).</p>
+<script src="fixtures/step32-block-fills.js"></script>
+<script src="../block-fills.js"></script>
+<script>
+for (const [name,width,height,direction,colors,zoom] of [
+    ['Wide',600,130,'diagonal-down',['#172B4D','#DFE9F4'],false],
+    ['Tall',180,270,'diagonal-up',['#172B4D','#DFE9F4'],false],
+    ['Square',240,240,'horizontal',['#172B4D','#DFE9F4'],false],
+    ['Four colors',600,100,'vertical',['#172B4D','#EABF83','#BCE2CE','#DFE9F4'],false],
+    ['200% zoom',260,90,'diagonal-down',['#172B4D','#DFE9F4'],true]
+]) for (const style of ['dithered','dots']) {
+    const h=document.createElement('h2');h.textContent=`${name} — ${style}, ${direction}`;document.body.append(h);
+    const pair=document.createElement('div');pair.className='pair';document.body.append(pair);
+    for (const previous of [true,false]) {
+        const column=document.createElement('div'),label=document.createElement('p'),sample=document.createElement('div');
+        label.textContent=previous?'Before':'After';sample.className='sample'+(zoom?' zoom':'');
+        sample.style.width=width+'px';sample.style.height=height+'px';column.append(label,sample);pair.append(column);
+        (previous?Step32Fills:BlockFills).apply(sample,{style,direction,colors});
+    }
+}
+</script>

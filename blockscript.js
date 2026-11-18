@@ -15,6 +15,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const compactFilters = window.matchMedia('(max-width: 640px)');
     let blocks = [];
     let editing = null;
+    let editSnapshot = null;
+    let transitionKind = 'leave';
+    const editKeys = ['title', 'text', 'tags', 'color', 'fill', 'colorOpacity'];
+    const editValues = block => Object.fromEntries(editKeys.filter(key => block[key] !== undefined).map(key => [key, structuredClone(block[key])]));
+    const sessionChanged = () => editing && editSnapshot && JSON.stringify(editValues(editing)) !== JSON.stringify(editSnapshot);
     let creating = false;
     let component = 'text';
     const editorPanel = $('#note-editor');
@@ -93,7 +98,15 @@ document.addEventListener('DOMContentLoaded', () => {
             (b.tags !== undefined && (!Array.isArray(b.tags) || b.tags.some(tag => typeof tag !== 'string'))))) throw new Error('Invalid backup');
         return data.map(b => {
             const block = { title: b.title || 'Untitled', text: b.text, tags: normalizeTags(b.tags || []), color: opaqueHex(b.color, '#F8F8F8') };
+            if (b.colorOpacity !== undefined) {
+                if (!BlockFills.validOpacity(b.colorOpacity)) throw new Error('Invalid color opacity');
+                if (b.colorOpacity !== 1) block.colorOpacity = b.colorOpacity;
+            }
             if (b.fill !== undefined) { block.fill = BlockFills.validate(b.fill); block.color = block.fill.colors[0]; }
+            if (block.fill) {
+                if (b.colorOpacity !== undefined && b.colorOpacity !== (block.fill.opacities?.[0] ?? 1)) throw new Error('Mismatched color opacity');
+                if (block.fill.opacities && block.fill.opacities[0] !== 1) block.colorOpacity = block.fill.opacities[0]; else delete block.colorOpacity;
+            }
             if (b.codePin !== undefined) {
                 const pin = b.codePin;
                 if (!pin || typeof pin !== 'object' || Array.isArray(pin) || !['qr', 'barcode'].includes(pin.format) ||
@@ -124,24 +137,24 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedColor = color;
         fillDraft.colors[0] = color;
         noteColorControl?.set(color);
-        updateFillPreview();
     }
     function resetEditor() {
         if (editing) fillDraft = structuredClone(creatorFill);
         chooseColor(editing ? creatorColor : selectedColor);
-        editing = null; title.value = ''; text.value = ''; tagInput.value = ''; add.textContent = 'Add Text Block';
+        editing = null; editSnapshot = null; title.value = ''; text.value = ''; tagInput.value = ''; add.textContent = 'Add Text Block';
         creating = false; editorPanel.hidden = true; editorHome.prepend(editorPanel);
         $('#cancel-edit').hidden = true;
         updateDetectedLinks();
     }
     function loadBlockDraft() {
-        fillDraft = editing.fill ? structuredClone(editing.fill) : { style: 'solid', colors: [editing.color, '#FFFFFF'] };
+        fillDraft = editing.fill ? structuredClone(editing.fill) : { style: 'solid', colors: [editing.color, '#FFFFFF'], opacities: [editing.colorOpacity ?? 1, 1] };
         title.value = editing.title; text.value = editing.text; tagInput.value = editing.tags.join(', '); chooseColor(editing.color);
         updateDetectedLinks();
     }
     function rawDraft() {
         const values = { title: title.value, text: text.value, tags: tagInput.value, color: $('#note-color-hex').value };
-        return JSON.stringify(creating ? { ...values, fill: fillDraft } : component === 'color' ? { color: values.color, fill: fillDraft } : { title: values.title, text: values.text, tags: values.tags });
+        const stopHex = [...editorPanel.querySelectorAll('[data-stop-hex], [data-opacity-number]')].map(field => field.value);
+        return JSON.stringify(creating ? { ...values, fill: fillDraft, stopHex } : component === 'color' ? { color: values.color, fill: fillDraft, stopHex } : { title: values.title, text: values.text, tags: values.tags });
     }
     function focusComponent() {
         ({ title, text, tags: tagInput, color: $('#note-color-hex') })[component].focus({ preventScroll: true });
@@ -159,7 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (key === component) { focusComponent(); return; }
                 transitionDraft(() => {
                     component = key; loadBlockDraft(); configureEditor(); draftBaseline = rawDraft(); focusComponent();
-                });
+                }, 'component');
             });
             control.dataset.component = key; control.setAttribute('aria-pressed', String(component === key));
             $('#component-controls').append(control);
@@ -174,7 +187,7 @@ document.addEventListener('DOMContentLoaded', () => {
         transitionDraft(() => {
             const x = scrollX, y = scrollY;
             if (!editing) { creatorColor = selectedColor; creatorFill = structuredClone(fillDraft); }
-            creating = false; editing = block; component = 'text'; loadBlockDraft(); configureEditor();
+            creating = false; editing = block; editSnapshot = editValues(block); component = 'text'; loadBlockDraft(); configureEditor();
             draftBaseline = rawDraft(); render(); focusComponent();
             window.scrollTo(x, y);
         });
@@ -185,16 +198,35 @@ document.addEventListener('DOMContentLoaded', () => {
         (list.querySelector(`[data-index="${blocks.indexOf(block)}"] [data-label="Edit"]`) || $('#new-block')).focus({ preventScroll: true });
         window.scrollTo(x, y);
     }
-    function transitionDraft(next) {
-        if (!(editing || creating) || rawDraft() === draftBaseline) { next(); return; }
-        pendingTransition = next; transitionFocus = document.activeElement;
-        $('#draft-description').textContent = creating ? 'Save this new block before continuing?' : `Save changes to ${components[component].toLowerCase()} before continuing?`;
+    function restoreSession() {
+        if (!sessionChanged()) return true;
+        const restored = { ...editing, ...structuredClone(editSnapshot) };
+        for (const key of editKeys) if (!(key in editSnapshot)) delete restored[key];
+        if (!write('textBlocks', JSON.stringify(blocks.map(block => block === editing ? restored : block)))) {
+            notify('Could not restore the original block. Editing remains open; try Cancel again.'); return false;
+        }
+        for (const key of editKeys) if (!(key in editSnapshot)) delete editing[key];
+        Object.assign(editing, editValues(restored));
+        return true;
+    }
+    function cancelEditing() {
+        if (!restoreSession()) return false;
+        finishEditing(); notify('Editing cancelled.'); return true;
+    }
+    function transitionDraft(next, kind = 'leave') {
+        if (!(editing || creating) || (rawDraft() === draftBaseline && (kind !== 'leave' || !sessionChanged()))) { next(); return; }
+        pendingTransition = next; transitionKind = kind; transitionFocus = document.activeElement;
+        $('#draft-description').textContent = creating ? 'Save this new block before continuing?' : kind === 'leave' ? 'Keep changes from this editing session? Discard restores the original text and colors.' : `Save changes to ${components[component].toLowerCase()} before continuing?`;
         $('#draft-dialog').showModal(); $('#draft-keep').focus();
     }
     function closeDraftDialog() { $('#draft-dialog').close(); pendingTransition = null; transitionFocus?.focus({ preventScroll: true }); }
     $('#draft-keep').addEventListener('click', closeDraftDialog);
-    $('#draft-dialog').addEventListener('cancel', event => { event.preventDefault(); closeDraftDialog(); });
-    $('#draft-discard').addEventListener('click', () => { const next = pendingTransition; closeDraftDialog(); next?.(); });
+    $('#draft-dialog').addEventListener('cancel', event => { event.preventDefault(); closeDraftDialog(); cancelEditing(); });
+    $('#draft-discard').addEventListener('click', () => {
+        const next = pendingTransition, kind = transitionKind; closeDraftDialog();
+        if (kind !== 'component' && !restoreSession()) return;
+        next?.();
+    });
     $('#draft-save').addEventListener('click', () => {
         const next = pendingTransition;
         // Close the modal so validation can focus the field that needs attention.
@@ -203,7 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#new-block').addEventListener('click', () => transitionDraft(() => {
         resetEditor(); creating = true; component = 'text'; configureEditor(); draftBaseline = rawDraft(); render(); title.focus({ preventScroll: true });
     }));
-    $('#done-edit').addEventListener('click', () => transitionDraft(finishEditing));
+    $('#done-edit').addEventListener('click', () => transitionDraft(finishEditing, 'accept'));
     editorPanel.addEventListener('click', event => event.stopPropagation());
     editorPanel.addEventListener('pointerdown', event => event.stopPropagation());
     const copyTimers = new Map();
@@ -448,6 +480,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const open = blocks.filter(block => !block.codePin && qrViews.get(block)?.element.isConnected);
         if (open.length) { event.preventDefault(); open.forEach(block => closeQR(block)); }
     });
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape' || event.defaultPrevented || dragging || document.querySelector('dialog[open]')) return;
+        const appearance = $('.appearance-settings');
+        if (appearance.open && appearance.contains(event.target)) {
+            event.preventDefault(); appearance.open = false; appearance.querySelector('summary').focus(); return;
+        }
+        if (editing || creating) { event.preventDefault(); cancelEditing(); }
+    });
     function renderTagFilters() {
         const focusedKey = document.activeElement.dataset?.tagFilter;
         const counts = new Map();
@@ -668,6 +708,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (creating) {
             const draftCard = document.createElement('article'); draftCard.className = 'new-block-card';
             draftCard.setAttribute('aria-label', 'New block draft'); draftCard.append(editorPanel); list.append(draftCard);
+            BlockFills.apply(draftCard, fillDraft.style === 'solid' ? null : fillDraft, selectedColor, fillDraft.opacities?.[0]);
         }
         const visibleBlocks = displayBlocks.filter(({ block }) => block === editing || matchesFilter(block));
         const hasPriority = priorityView && visibleBlocks.some(({ block }) => priorityOf(block) < Infinity);
@@ -683,7 +724,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const card = document.createElement('article'); card.className = 'text-block';
             card.style.backgroundColor = block.color; card.draggable = false;
             card.style.color = foregroundFor(block.color);
-            BlockFills.apply(card, block.fill);
+            BlockFills.apply(card, block.fill, block.color, block.colorOpacity);
             card.dataset.index = index;
             if (block === editing) {
                 card.classList.add('is-editing');
@@ -722,9 +763,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (block === editing) card.append(editorPanel);
             card.append(content);
             const colorLabel = button(block.color.toUpperCase(), () => {
-                if (editing && component === 'color') savePickedColor(block.color);
-                else if (!editing) chooseColor(block.color);
-                else { creatorColor = block.color; notify('Color selected for the next new block. Edit Color to change this note.'); }
+                const opacity = block.fill?.opacities?.[0] ?? block.colorOpacity ?? 1;
+                if (!editing || component === 'color') {
+                    fillDraft.opacities ??= fillDraft.colors.map(() => 1);
+                    fillDraft.opacities[0] = opacity;
+                    if (editing) savePickedColor(block.color); else chooseColor(block.color);
+                    renderFillControls();
+                } else { creatorColor = block.color; creatorFill.opacities ??= creatorFill.colors.map(() => 1); creatorFill.opacities[0] = opacity; notify('Color selected for the next new block. Edit Color to change this note.'); }
             });
             colorLabel.className = 'note-color-value'; colorLabel.draggable = false;
             colorLabel.setAttribute('aria-label', `Use note color ${block.color.toUpperCase()}`);
@@ -789,7 +834,7 @@ document.addEventListener('DOMContentLoaded', () => {
         window.scrollTo(...scrollPosition);
     }
     function draftValue() {
-        if ((!editing || component === 'color') && !noteColorControl.valid()) return null;
+        if ((!editing || component === 'color') && !validColorDraft()) return null;
         if ((!editing || component === 'text') && !text.value.trim()) { notify('Enter some text first.'); text.focus({ preventScroll: true }); return null; }
         const values = { title: title.value.trim() || 'Untitled', text: text.value, tags: normalizeTags([tagInput.value]), color: selectedColor };
         if (editing && component !== 'color') return { ...editing, title: values.title, text: values.text, tags: values.tags };
@@ -821,6 +866,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!write('textBlocks', JSON.stringify(next))) return false;
         if (editing) {
             if (!value.fill) delete editing.fill;
+            if (value.colorOpacity === undefined) delete editing.colorOpacity;
             Object.assign(editing, value);
         } else blocks.push(value);
         if (editing && keepEditing) { loadBlockDraft(); draftBaseline = rawDraft(); render(); focusComponent(); }
@@ -832,67 +878,121 @@ document.addEventListener('DOMContentLoaded', () => {
         return true;
     }
     add.addEventListener('click', () => saveDraft());
-    $('#cancel-edit').addEventListener('click', finishEditing);
+    $('#cancel-edit').addEventListener('click', cancelEditing);
     text.addEventListener('input', updateDetectedLinks);
     $('#all-tags').addEventListener('click', () => { activeFilter = ''; render(); });
     compactFilters.addEventListener('change', render);
     function withFill(value) {
+        const opacity = fillDraft.opacities?.[0] ?? 1;
+        if (opacity !== 1) value.colorOpacity = opacity; else delete value.colorOpacity;
         if (fillDraft.style === 'solid') delete value.fill;
         else value.fill = BlockFills.validate(fillDraft);
         return value;
     }
-    function updateFillPreview() {
-        const preview = $('#fill-preview');
-        preview.style.backgroundColor = selectedColor;
-        BlockFills.apply(preview, fillDraft.style === 'solid' ? null : fillDraft);
-        preview.setAttribute('aria-label', `${fillDraft.style === 'solid' ? 'Solid' : fillDraft.style} fill preview: ${fillDraft.style === 'solid' ? selectedColor : fillDraft.colors.join(', ')}`);
+    function validColorDraft() {
+        return noteColorControl.valid() && [...editorPanel.querySelectorAll('[data-stop-hex], [data-opacity-number]')].every(field => field.reportValidity());
+    }
+    function opacityControl(index) {
+        const row = document.createElement('div'); row.className = 'opacity-row';
+        const label = document.createElement('label'); label.textContent = 'Opacity';
+        const slider = document.createElement('input'); slider.type = 'range'; slider.min = 0; slider.max = 100; slider.step = 1;
+        slider.id = `color-opacity-${index}`; label.htmlFor = slider.id;
+        const number = document.createElement('input'); number.type = 'number'; number.min = 0; number.max = 100; number.step = 1; number.required = true;
+        number.id = `color-opacity-value-${index}`; number.dataset.opacityNumber = index;
+        for (const field of [slider, number]) { field.value = Math.round((fillDraft.opacities?.[index] ?? 1) * 100); field.setAttribute('aria-label', `Color ${index + 1} opacity percent`); field.title = `Color ${index + 1} opacity (%)`; }
+        const percent = document.createElement('span'); percent.textContent = '%';
+        function accept(source) {
+            if (!source.checkValidity()) { number.setAttribute('aria-invalid', 'true'); return; }
+            number.setAttribute('aria-invalid', 'false');
+            slider.value = number.value = source.value;
+            fillDraft.opacities ??= fillDraft.colors.map(() => 1);
+            fillDraft.opacities[index] = Number(source.value) / 100;
+            savePickedColor(selectedColor);
+        }
+        slider.addEventListener('input', () => accept(slider)); number.addEventListener('input', () => accept(number));
+        row.append(label, slider, number, percent); return row;
     }
     function renderFillControls() {
+        $('#primary-color-row .opacity-row')?.remove();
+        $('#primary-color-row').append(opacityControl(0));
         $('#note-fill-style').value = fillDraft.style;
         const holder = $('#fill-colors'); holder.replaceChildren();
         const multi = fillDraft.style !== 'solid';
+        $('#fill-directions').hidden = !multi;
+        document.querySelectorAll('[data-fill-direction]').forEach(control => control.setAttribute('aria-pressed', String(control.dataset.fillDirection === (fillDraft.direction || 'horizontal'))));
         $('#add-fill-color').hidden = !multi || fillDraft.colors.length >= 4;
+        $('#reverse-fill-colors').hidden = !multi;
         if (multi) fillDraft.colors.slice(1).forEach((color, offset) => {
             const index = offset + 1, row = document.createElement('div'); row.className = 'fill-color-row';
             const label = document.createElement('label'); label.textContent = `Color ${index + 1}`;
             const picker = document.createElement('input'); picker.type = 'color'; picker.value = color;
             picker.id = `fill-color-${index}`; label.htmlFor = picker.id;
-            const value = document.createElement('span'); value.textContent = color;
+            picker.title = `Color ${index + 1}`;
+            const value = document.createElement('input'); value.type = 'text'; value.value = color;
+            value.className = 'hex-input'; value.spellcheck = false; value.dataset.stopHex = index;
+            value.id = `fill-color-${index}-hex`; value.setAttribute('aria-label', `Color ${index + 1} HEX`);
+            value.title = `Color ${index + 1} HEX`;
+            const error = document.createElement('span'); error.className = 'color-error'; error.id = `fill-color-${index}-error`; error.setAttribute('aria-live', 'polite');
+            value.setAttribute('aria-describedby', error.id);
+            function accept(color) {
+                value.setCustomValidity(''); value.setAttribute('aria-invalid', 'false'); error.textContent = '';
+                fillDraft.colors[index] = color; value.value = color; picker.value = color;
+                if (validColorDraft()) savePickedColor(selectedColor);
+            }
+            value.addEventListener('input', () => {
+                const match = value.value.trim().match(/^#?([\da-f]{6})$/i);
+                if (!match) {
+                    const message = 'Enter six HEX digits.'; value.setCustomValidity(message); value.setAttribute('aria-invalid', 'true'); error.textContent = message; return;
+                }
+                accept('#' + match[1].toUpperCase());
+            });
             picker.addEventListener('input', () => {
-                fillDraft.colors[index] = picker.value.toUpperCase(); value.textContent = fillDraft.colors[index];
-                savePickedColor(selectedColor);
+                accept(picker.value.toUpperCase());
             });
             row.append(label, picker, value);
             if (fillDraft.colors.length > 2) {
-                const remove = button('Remove', () => { fillDraft.colors.splice(index, 1); renderFillControls(); savePickedColor(selectedColor); $('#add-fill-color').focus({ preventScroll: true }); });
-                remove.setAttribute('aria-label', `Remove color ${index + 1}`); row.append(remove);
+                const remove = button('×', () => { if (!validColorDraft()) return; fillDraft.colors.splice(index, 1); fillDraft.opacities?.splice(index, 1); renderFillControls(); savePickedColor(selectedColor); $('#add-fill-color').focus({ preventScroll: true }); });
+                remove.setAttribute('aria-label', `Remove color ${index + 1}`); remove.title = `Remove color ${index + 1}`; row.append(remove);
             }
-            holder.append(row);
+            row.append(opacityControl(index)); holder.append(row, error);
         });
-        updateFillPreview();
     }
     $('#note-fill-style').addEventListener('change', () => {
+        if (!validColorDraft()) { $('#note-fill-style').value = fillDraft.style; return; }
         fillDraft.style = $('#note-fill-style').value; renderFillControls(); savePickedColor(selectedColor);
     });
+    document.querySelectorAll('[data-fill-direction]').forEach(control => control.addEventListener('click', () => {
+        if (!validColorDraft()) return;
+        fillDraft.direction = control.dataset.fillDirection; renderFillControls(); savePickedColor(selectedColor);
+    }));
     $('#add-fill-color').addEventListener('click', () => {
-        if (fillDraft.colors.length >= 4) return;
-        fillDraft.colors.push('#808080'); renderFillControls(); savePickedColor(selectedColor);
+        if (fillDraft.colors.length >= 4 || !validColorDraft()) return;
+        fillDraft.colors.push('#808080'); fillDraft.opacities?.push(1); renderFillControls(); savePickedColor(selectedColor);
         $(`#fill-color-${fillDraft.colors.length - 1}`).focus({ preventScroll: true });
+    });
+    $('#reverse-fill-colors').addEventListener('click', () => {
+        if (fillDraft.style === 'solid' || !validColorDraft()) return;
+        fillDraft.colors.reverse();
+        fillDraft.opacities?.reverse();
+        chooseColor(fillDraft.colors[0]); renderFillControls(); savePickedColor(selectedColor);
     });
     function savePickedColor(color) {
         chooseColor(color);
+        if (!validColorDraft()) return;
+        if (creating) BlockFills.apply(list.querySelector('.new-block-card'), fillDraft.style === 'solid' ? null : fillDraft, selectedColor, fillDraft.opacities?.[0]);
         if (!editing || component !== 'color') return;
         if (storageBlocked) { notify('Saved data could not be read. Recover it before saving colors.'); return; }
         const value = withFill({ ...editing, color });
         if (!write('textBlocks', JSON.stringify(blocks.map(block => block === editing ? value : block)))) return;
         editing.color = color;
+        if (value.colorOpacity !== undefined) editing.colorOpacity = value.colorOpacity; else delete editing.colorOpacity;
         if (value.fill) editing.fill = value.fill; else delete editing.fill;
         draftBaseline = rawDraft();
         // Keep the native picker and keyboard focus intact during continuous input.
         const card = list.querySelector('.is-editing');
         if (card) {
             card.style.backgroundColor = color; card.style.color = foregroundFor(color);
-            BlockFills.apply(card, editing.fill);
+            BlockFills.apply(card, editing.fill, color, editing.colorOpacity);
             const label = card.querySelector('.note-color-value');
             label.textContent = color; label.setAttribute('aria-label', `Use note color ${color}`);
         }
