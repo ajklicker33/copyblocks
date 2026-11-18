@@ -92,7 +92,7 @@ window.ConnectFourEngine = createConnectFourEngine();
 
 (() => {
     const $ = selector => document.querySelector(selector), engine = window.ConnectFourEngine;
-    const panel = $('#connect-four'), toggle = $('#connect-four-toggle'), workspace = $('.editor-workspace');
+    const panel = $('#connect-four'), toggle = $('#connect-four-toggle'), workspace = $('.blocks-workspace');
     const difficulty = $('#game-difficulty'), status = $('#game-status'), boardView = $('#game-board');
     const key = 'copyblocks.connectFour.v1', levels = ['easy', 'medium', 'hard'];
     const emptyScores = () => Object.fromEntries(levels.map(level => [level, { wins: 0, losses: 0, draws: 0 }]));

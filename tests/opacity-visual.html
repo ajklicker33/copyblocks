@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>Per-color opacity review</title>
+<style>body{font:16px Arial;background:#eee;margin:24px}main{display:flex;gap:24px}iframe{height:1800px;border:1px solid #aaa}h1{font-size:24px}</style>
+<h1>Per-color opacity: actual blocks and compact controls</h1>
+<p>Transparent, mixed-alpha and opaque stops; desktop and 320px. Labels and content stay readable.</p><main></main>
+<script>
+if(new URLSearchParams(location.search).get('isolatedReview')!=='1')throw Error('Use isolated runner -CaptureOpacityReview');
+const colors=['#173B5C','#DEB982'];
+localStorage.setItem('textBlocks',JSON.stringify(['dots','smooth','dithered','solid'].map(style=>({title:style,text:'Text remains opaque. https://example.com',tags:['review'],color:colors[0],colorOpacity:.25,...(style==='solid'?{}:{fill:{style,direction:'diagonal-down',colors,opacities:[.25,.8]}})}))));
+localStorage.setItem('preferredColumns','1');localStorage.setItem('surfaceColor','#E8D8C3');localStorage.setItem('actionIconMode','false');
+for(const width of [600,320]){
+ const frame=document.createElement('iframe');frame.style.width=width+'px';frame.src='../index.html';frame.title=width+'px opacity';
+ frame.onload=()=>{const d=frame.contentDocument;const s=d.createElement('style');s.textContent='.app-header{display:none}.blocks-section{margin-top:0}';d.head.append(s);d.querySelector('[data-label="Edit"]').click();d.querySelector('[data-component="color"]').click();};document.querySelector('main').append(frame);
+}
+</script>

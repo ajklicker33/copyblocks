@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Step 34 palette layout</title>
+<style>body{font:16px Arial;margin:24px;background:#eee} main{display:flex;gap:32px;align-items:start}iframe{border:1px solid #aaa;height:920px}h1{font-size:24px}</style>
+<h1>Step 34: Color 1 → compact swap → Color 2</h1>
+<p>Actual editor at desktop and 320px widths. Header hidden only in this isolated review fixture.</p>
+<main></main>
+<script>
+if(new URLSearchParams(location.search).get('isolatedReview')!=='1')throw new Error('Run with run-browser-tests.ps1 -CapturePaletteReview in its isolated profile.');
+localStorage.setItem('textBlocks',JSON.stringify([{title:'Palette review',text:'Example',color:'#173B5C',tags:[],fill:{style:'dots',direction:'diagonal-down',colors:['#173B5C','#DEB982']}}]));
+localStorage.setItem('preferredColumns','1');localStorage.setItem('actionIconMode','false');
+for(const width of [600,320]){
+ const box=document.createElement('iframe');box.style.width=width+'px';box.title=width+'px palette editor';box.src='../index.html';
+ box.onload=()=>{const doc=box.contentDocument;const style=doc.createElement('style');style.textContent='.app-header{display:none}.blocks-section{margin-top:0}';doc.head.append(style);doc.querySelector('[data-label="Edit"]').click();doc.querySelector('[data-component="color"]').click();};
+ document.querySelector('main').append(box);
+}
+</script>

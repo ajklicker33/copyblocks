@@ -18,10 +18,6 @@ body {
 .text-block.is-editing .qr-view { position: relative; left: auto; top: auto; transform: none; margin-top: 8px; max-height: none; box-shadow: none; }
 #draft-dialog { box-sizing: border-box; width: min(440px, calc(100% - 24px)); border: 1px solid #888; border-radius: 8px; padding: 18px; }
 #draft-dialog::backdrop { background: #0006; }
-.editor-workspace #connect-four { max-width: 380px; }
-
-.editor-workspace.game-visible { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 360px); gap: 12px; max-width: 1560px; margin: 12px auto 0; align-items: start; }
-.editor-workspace.game-visible .note-editor { margin: 0; width: 100%; min-width: 0; box-sizing: border-box; }
 #connect-four { width: 100%; min-width: 0; box-sizing: border-box; }
 #connect-four[hidden] { display: none; }
 .game-heading, .game-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
@@ -39,10 +35,6 @@ body {
 .game-help, #game-moves, .game-record, #game-storage { font-size: .8rem; }
 #game-history { overflow-wrap: anywhere; }
 #game-storage:empty { display: none; }
-@media (max-width: 850px) {
-    .editor-workspace.game-visible { grid-template-columns: minmax(0, 1fr); }
-    #connect-four { max-width: 380px; }
-}
 
 .container {
     background-color: white;
@@ -510,18 +502,72 @@ button:disabled { cursor: default; opacity: .5; }
 .preset-help { font-size: .75rem; margin: 6px 0 10px; }
 .fill-settings { flex-basis: 100%; min-width: 0; }
 .fill-settings select { max-width: 100%; }
-.fill-color-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; }
-.fill-color-row button { margin-left: auto; }
-#fill-help { font-size: .75rem; margin: 6px 0; }
-#fill-preview { height: 48px; border: 1px solid currentColor; border-radius: 4px; }
+.note-editor { container-type: inline-size; }
+.fill-color-row { display: flex; flex-wrap: nowrap; align-items: center; gap: 5px; margin: 6px 0; min-width: 0; }
+.fill-color-row > label:first-child { flex: 0 0 auto; font-size: .8rem; white-space: nowrap; }
+.fill-color-row input[type="color"] { flex: 0 0 36px; width: 36px; }
+.fill-color-row .hex-input { flex: 1 1 8ch; width: 8ch; min-width: 0; }
+.fill-color-row button { flex: 0 0 28px; min-height: 28px; padding: 0; margin: 0; }
+#primary-color-row label[for="note-color-hex"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+#primary-color-row { position: relative; }
+#note-color-error:not(:empty) { position: absolute; top: 100%; z-index: 2; }
+.fill-settings > label, #fill-orientation-label { font-size: .8rem; white-space: nowrap; }
+#reverse-fill-colors { display: block; width: 100%; min-height: 28px; height: 28px; padding: 0 8px; margin: 2px 0; line-height: 1; font-size: 1.1rem; }
+#fill-directions { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; margin: 6px 0; }
+#fill-orientation-label { flex: 0 0 auto; }
+#fill-directions button { flex: 1; min-width: 28px; min-height: 28px; padding: 2px; font-size: 1.1rem; }
+@container (max-width: 300px) {
+    .fill-color-row > label:first-child, .fill-settings > label, #fill-orientation-label {
+        position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+    }
+}
+#fill-directions [aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: -3px; }
 /* Stable opaque text surfaces keep every palette readable, including black-to-white. */
 .patterned-block > .block-title, .patterned-block > .text-content,
 .patterned-block > .block-links, .patterned-block > .filter-exception {
     background: #fff; color: #111; padding: 6px; border-radius: 4px;
 }
 .patterned-block > .block-links a { color: #111; }
-.editor-workspace.game-visible { display: flex; justify-content: flex-end; }
 @media (max-width: 640px) {
     .blocks-toolbar { flex-wrap: wrap; }
     .blocks-toolbar > #tag-filter { flex-basis: 100%; order: 3; }
+}
+.fill-color-row { flex-wrap: wrap; }
+.fill-color-row > .opacity-row { flex: 0 0 100%; }
+.opacity-row { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: .75rem; }
+.opacity-row label { white-space: nowrap; }
+.opacity-row input[type=range] { flex: 1; min-width: 20px; width: 0; margin: 0; }
+.opacity-row input[type=number] { flex: 0 0 48px; width: 48px; min-width: 0; padding: 2px; }
+
+/* The collection owns the workspace; utilities consume space only when open. */
+body { padding: 8px 12px 16px; }
+.app-header { max-width: none; padding: 4px 8px; min-height: 32px; gap: 8px; justify-content: space-between; box-shadow: none; }
+.app-header h1 { font-size: 1.05rem; }
+.utilities-menu { position: relative; }
+.utilities-menu summary, .collection-actions summary { padding: 7px 8px; cursor: pointer; font-size: .85rem; white-space: nowrap; }
+.utility-actions, .collection-panel { position: absolute; right: 0; top: 100%; z-index: 40; display: flex; gap: 6px; padding: 8px; border: 1px solid #999; border-radius: 5px; background: var(--surface-color, white); box-shadow: 0 3px 10px #0002; }
+.utility-actions button { white-space: nowrap; min-height: 34px; margin: 0; }
+.blocks-workspace { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 10px; margin-top: 8px; }
+.blocks-section { width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: 10px; box-shadow: none; }
+.blocks-workspace #connect-four { width: min(100%, 380px); justify-self: end; margin: 0; padding: 10px; }
+.blocks-toolbar { position: relative; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 4px; }
+.blocks-toolbar > #tag-filter { flex: 1 1 180px; order: 0; }
+.blocks-toolbar > #priority-toggle { margin-left: 0; }
+.blocks-toolbar > button, .view-controls > button { margin: 0; min-height: 34px; padding: 5px 8px; }
+.view-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; max-width: 100%; }
+.density-control input { width: 80px; }
+.collection-actions { position: relative; }
+.appearance-panel { top: 100%; right: 0; max-width: 100%; }
+#block-count { font-size: .75rem; }
+#text-blocks { margin-top: 8px; gap: 12px; }
+@media (max-width: 1000px) {
+    .view-controls { flex-basis: 100%; }
+}
+@media (max-width: 640px) {
+    body { padding: 6px; }
+    .blocks-section { padding: 8px; }
+    .blocks-toolbar > #tag-filter { flex-basis: 100%; order: 0; }
+    .blocks-toolbar > #new-block { order: -2; }
+    .blocks-toolbar > #priority-toggle { order: -1; margin-left: auto; }
+    .collection-panel { right: auto; left: 0; }
 }
